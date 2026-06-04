@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { assemble, type ParsedInstruction, type ParseError, REG_NAMES } from '../engine/mipsParser';
-import { MIPSPipelineEngine, type PipelineSnapshot, type EngineStats } from '../engine/pipelineEngine';
+import { MIPSPipelineEngine, type PipelineSnapshot, type EngineStats, type CycleRecord } from '../engine/pipelineEngine';
+import { completeSyscallInput, SYSCALL } from '../engine/syscallHandler';
 
 // ── Re-export types for UI compatibility ─────────────────────────────────
 
@@ -54,6 +55,7 @@ interface SimulatorStore {
   instructions: ParsedInstruction[];
   parseErrors: ParseError[];
   labels: Map<string, number>;
+  dataLabels: Map<string, number>;
   isAssembled: boolean;
 
   // Control
@@ -68,12 +70,24 @@ interface SimulatorStore {
   // Recently modified registers (for highlighting)
   modifiedRegs: Set<number>;
   readRegs: Set<number>;
+  modifiedAddresses: Set<number>;
 
   // Current line in editor being executed
   currentPCLine: number;
 
   // Total possible cycles estimate
   totalInstructionCount: number;
+
+  // Console / IO
+  consoleOutput: string[];
+  waitingForInput: boolean;
+  pendingSyscallV0: number;
+
+  // Cycle history for timing diagram
+  cycleHistory: CycleRecord[];
+
+  // Blocked instructions (for assignment sandboxing)
+  blockedInstructions: string[];
 
   // Actions
   assemble: () => boolean;
@@ -86,6 +100,9 @@ interface SimulatorStore {
   removeBreakpoint: (line: number) => void;
   setSpeed: (speed: number) => void;
   clearErrors: () => void;
+  submitConsoleInput: (input: string) => void;
+  clearConsole: () => void;
+  setBlockedInstructions: (blocked: string[]) => void;
 }
 
 // ── Engine Instance ──────────────────────────────────────────────────────
@@ -147,22 +164,39 @@ const EMPTY_STATS: SimStats = {
   flushCount: 0, cpi: 0, efficiency: 0,
 };
 
-const INITIAL_CODE = `# Fibonacci Loop — MIPS Pipeline Demo
-# Demonstrates data hazards & MEM→EX forwarding
+const INITIAL_CODE = `# MIPS Pipeline Demo — Bubble Sort
+# Demonstrates .data section, loops, and memory access
 
+.data
+array:  .word 5, 3, 8, 1, 4, 7, 2, 6
+size:   .word 8
+
+.text
 main:
-  addi  $t0, $zero, 0   # fib(n-2) = 0
-  addi  $t1, $zero, 1   # fib(n-1) = 1
-  addi  $t3, $zero, 5   # loop counter = 5
+  # Load array base and size
+  la    $t0, array        # $t0 = base address
+  lw    $t1, 0($t0)       # load first element for demo
+  
+  # Fibonacci sequence
+  addi  $t2, $zero, 0     # fib(n-2) = 0
+  addi  $t3, $zero, 1     # fib(n-1) = 1
+  addi  $t5, $zero, 8     # loop counter
 
-loop:
-  add   $t2, $t0, $t1   # fib = fib(n-2) + fib(n-1)
-  sw    $t2, 0($sp)      # store result
-  add   $t0, $t1, $zero  # advance fib(n-2)
-  add   $t1, $t2, $zero  # advance fib(n-1)
-  addi  $t3, $t3, -1     # decrement counter
-  bne   $t3, $zero, loop # loop if not done
-  jr    $ra              # return
+fib_loop:
+  add   $t4, $t2, $t3     # fib = fib(n-2) + fib(n-1)
+  add   $t2, $t3, $zero   # advance fib(n-2)
+  add   $t3, $t4, $zero   # advance fib(n-1)
+  addi  $t5, $t5, -1      # decrement counter
+  bne   $t5, $zero, fib_loop
+
+  # Print result
+  addi  $v0, $zero, 1     # syscall 1 = print_int
+  add   $a0, $t4, $zero   # $a0 = final fibonacci number
+  syscall
+
+  # Exit
+  addi  $v0, $zero, 10    # syscall 10 = exit
+  syscall
 `;
 
 let autoPlayInterval: ReturnType<typeof setInterval> | null = null;
@@ -181,6 +215,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
   instructions: [],
   parseErrors: [],
   labels: new Map(),
+  dataLabels: new Map(),
   isAssembled: false,
 
   isPlaying: false,
@@ -191,16 +226,28 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
   stats: EMPTY_STATS,
   modifiedRegs: new Set(),
   readRegs: new Set(),
+  modifiedAddresses: new Set(),
   currentPCLine: -1,
   totalInstructionCount: 0,
+
+  consoleOutput: [],
+  waitingForInput: false,
+  pendingSyscallV0: 0,
+
+  cycleHistory: [],
+  blockedInstructions: [],
 
   setCode: (code) => set({ code, isAssembled: false }),
 
   assemble: () => {
-    const { code, forwardingEnabled } = get();
-    const result = assemble(code);
+    const { code, forwardingEnabled, blockedInstructions } = get();
+    const result = assemble(code, {
+      blockedInstructions: blockedInstructions.length > 0 ? blockedInstructions : undefined,
+    });
 
-    if (result.errors.length > 0) {
+    // Only block on actual errors, not warnings
+    const hasErrors = result.errors.some(e => e.severity === 'error');
+    if (hasErrors) {
       set({
         parseErrors: result.errors,
         isAssembled: false,
@@ -211,12 +258,15 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
 
     engine.forwardingEnabled = forwardingEnabled;
     engine.loadProgram(result.instructions);
+    engine.loadDataSegment(result.dataSegment);
+
     const snap = engine.getSnapshot();
 
     set({
       instructions: result.instructions,
-      parseErrors: [],
+      parseErrors: result.errors, // May include warnings
       labels: result.labels,
+      dataLabels: result.dataLabels,
       isAssembled: true,
       cycle: 0,
       pc: snap.pc,
@@ -227,9 +277,14 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
       stats: EMPTY_STATS,
       modifiedRegs: new Set(),
       readRegs: new Set(),
+      modifiedAddresses: new Set(),
       currentPCLine: result.instructions.length > 0 ? result.instructions[0].line : -1,
       totalInstructionCount: result.instructions.length,
       isPlaying: false,
+      consoleOutput: [],
+      waitingForInput: false,
+      pendingSyscallV0: 0,
+      cycleHistory: [],
     });
 
     // Stop auto-play if running
@@ -243,7 +298,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
 
   nextCycle: () => {
     const state = get();
-    if (!state.isAssembled || state.isFinished) {
+    if (!state.isAssembled || state.isFinished || state.waitingForInput) {
       if (state.isPlaying) {
         set({ isPlaying: false });
         if (autoPlayInterval) { clearInterval(autoPlayInterval); autoPlayInterval = null; }
@@ -267,8 +322,26 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
       }
     }
 
+    // Handle console output
+    const newConsoleOutput = [...state.consoleOutput];
+    if (snap.consoleOutput) {
+      newConsoleOutput.push(snap.consoleOutput);
+    }
+
+    // Handle syscall input request
+    let waitingForInput = false;
+    let pendingSyscallV0 = 0;
+    if (snap.syscallResult?.waitForInput) {
+      waitingForInput = true;
+      pendingSyscallV0 = engine.getRegisters()[2]; // $v0
+      // Pause auto-play
+      if (state.isPlaying) {
+        if (autoPlayInterval) { clearInterval(autoPlayInterval); autoPlayInterval = null; }
+      }
+    }
+
     // Check breakpoints
-    if (state.isPlaying && snap.pipeline.IF.instruction) {
+    if (state.isPlaying && snap.pipeline.IF.instruction && !waitingForInput) {
       const line = snap.pipeline.IF.instruction.line;
       if (state.breakpoints.has(line)) {
         set({ isPlaying: false });
@@ -292,7 +365,12 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
       stats: computeStats(snap.stats),
       modifiedRegs: modified,
       readRegs: read,
+      modifiedAddresses: new Set(snap.modifiedAddresses),
       currentPCLine: snap.pipeline.IF.instruction?.line ?? -1,
+      consoleOutput: newConsoleOutput,
+      waitingForInput,
+      pendingSyscallV0,
+      cycleHistory: [...engine.cycleHistory],
     });
   },
 
@@ -310,7 +388,9 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
       stats: computeStats(snap.stats),
       modifiedRegs: new Set(),
       readRegs: new Set(),
+      modifiedAddresses: new Set(),
       currentPCLine: snap.pipeline.IF.instruction?.line ?? -1,
+      cycleHistory: [...engine.cycleHistory],
     });
   },
 
@@ -329,11 +409,11 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
       set({ isPlaying: false });
     } else {
       // Start
-      if (state.isFinished) return;
+      if (state.isFinished || state.waitingForInput) return;
       set({ isPlaying: true });
       autoPlayInterval = setInterval(() => {
         const s = get();
-        if (s.isFinished || !s.isPlaying) {
+        if (s.isFinished || !s.isPlaying || s.waitingForInput) {
           if (autoPlayInterval) { clearInterval(autoPlayInterval); autoPlayInterval = null; }
           set({ isPlaying: false });
           return;
@@ -359,19 +439,27 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
     const state = get();
     if (state.isAssembled && state.instructions.length > 0) {
       engine.loadProgram(state.instructions);
+      // Re-load data segment from last assembly
+      const result = assemble(state.code);
+      engine.loadDataSegment(result.dataSegment);
       const snap = engine.getSnapshot();
       set({
         cycle: 0,
         pc: snap.pc,
         registers: registersToRecord(snap.registers),
-        memory: new Map(),
+        memory: new Map(snap.memory),
         pipeline: EMPTY_PIPELINE,
         isFinished: false,
         isPlaying: false,
         stats: EMPTY_STATS,
         modifiedRegs: new Set(),
         readRegs: new Set(),
+        modifiedAddresses: new Set(),
         currentPCLine: state.instructions[0]?.line ?? -1,
+        consoleOutput: [],
+        waitingForInput: false,
+        pendingSyscallV0: 0,
+        cycleHistory: [],
       });
     } else {
       set({
@@ -382,7 +470,12 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
         isFinished: false, isPlaying: false,
         stats: EMPTY_STATS,
         modifiedRegs: new Set(), readRegs: new Set(),
+        modifiedAddresses: new Set(),
         currentPCLine: -1,
+        consoleOutput: [],
+        waitingForInput: false,
+        pendingSyscallV0: 0,
+        cycleHistory: [],
       });
     }
   },
@@ -406,7 +499,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
       clearInterval(autoPlayInterval);
       autoPlayInterval = setInterval(() => {
         const s = get();
-        if (s.isFinished || !s.isPlaying) {
+        if (s.isFinished || !s.isPlaying || s.waitingForInput) {
           if (autoPlayInterval) { clearInterval(autoPlayInterval); autoPlayInterval = null; }
           set({ isPlaying: false });
           return;
@@ -417,4 +510,52 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
   },
 
   clearErrors: () => set({ parseErrors: [] }),
+
+  submitConsoleInput: (input: string) => {
+    const state = get();
+    if (!state.waitingForInput) return;
+
+    const registers = engine.getRegisters();
+    const memory = engine.getMemory();
+
+    // Complete the pending syscall
+    const writes = completeSyscallInput(state.pendingSyscallV0, input, registers, memory);
+
+    // Apply register writes
+    for (const [reg, val] of writes) {
+      registers[reg] = val;
+    }
+
+    // Add input echo to console
+    const newConsoleOutput = [...state.consoleOutput];
+    if (state.pendingSyscallV0 === SYSCALL.READ_INT) {
+      newConsoleOutput.push(`> ${input}`);
+    } else if (state.pendingSyscallV0 === SYSCALL.READ_STRING) {
+      newConsoleOutput.push(`> ${input}`);
+    }
+
+    set({
+      waitingForInput: false,
+      pendingSyscallV0: 0,
+      registers: registersToRecord(registers),
+      consoleOutput: newConsoleOutput,
+    });
+
+    // Resume auto-play if it was running
+    if (state.isPlaying) {
+      autoPlayInterval = setInterval(() => {
+        const s = get();
+        if (s.isFinished || !s.isPlaying || s.waitingForInput) {
+          if (autoPlayInterval) { clearInterval(autoPlayInterval); autoPlayInterval = null; }
+          set({ isPlaying: false });
+          return;
+        }
+        s.nextCycle();
+      }, state.speed);
+    }
+  },
+
+  clearConsole: () => set({ consoleOutput: [] }),
+
+  setBlockedInstructions: (blocked) => set({ blockedInstructions: blocked }),
 }));

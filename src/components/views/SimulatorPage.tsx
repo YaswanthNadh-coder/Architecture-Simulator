@@ -4,10 +4,11 @@ import { MipsEditor } from '../editor/MipsEditor';
 import { PipelineCanvas } from '../pipeline/PipelineCanvas';
 import { RegisterFile } from '../inspector/RegisterFile';
 import { RightPanel } from '../inspector/RightPanel';
+import { ConsolePanel } from '../console/ConsolePanel';
 import { ChevronRight, GraduationCap } from 'lucide-react';
 import { useSimulatorStore } from '../../store/simulatorStore';
 
-// We will build these properly later, but create placeholders to allow tab switching
+// Views
 import { DatapathView } from './DatapathView';
 import { TimingView } from './TimingView';
 import { MemoryView } from './MemoryView';
@@ -15,8 +16,9 @@ import { MemoryView } from './MemoryView';
 type TabView = 'Pipeline' | 'Datapath' | 'Timing' | 'Memory';
 
 export const SimulatorPage = () => {
-  const { cycle } = useSimulatorStore();
+  const { cycle, waitingForInput } = useSimulatorStore();
   const [activeTab, setActiveTab] = useState<TabView>('Pipeline');
+  const [showConsole, setShowConsole] = useState(true);
   const navigate = useNavigate();
 
   return (
@@ -39,6 +41,11 @@ export const SimulatorPage = () => {
               cycle {cycle}
             </span>
           )}
+          {waitingForInput && (
+            <span className="ml-2 text-[10px] px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 font-mono animate-pulse">
+              input required
+            </span>
+          )}
         </div>
 
         {/* View tabs */}
@@ -56,17 +63,37 @@ export const SimulatorPage = () => {
               {tab}
             </button>
           ))}
+          {/* Console toggle */}
+          <div className="w-px h-4 bg-border-subtle mx-1" />
+          <button
+            onClick={() => setShowConsole(!showConsole)}
+            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-150 ${
+              showConsole
+                ? 'bg-emerald-500/15 text-emerald-400 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.3)]'
+                : 'text-text-muted hover:text-white hover:bg-white/5'
+            }`}
+          >
+            Console
+          </button>
         </nav>
       </header>
 
       {/* Main Dashboard Grid */}
       <div className="flex-1 flex min-h-0">
-        {/* Left panel — MIPS IDE */}
+        {/* Left panel — MIPS IDE + Console */}
         <div
           className="w-[320px] xl:w-[380px] shrink-0 flex flex-col"
           style={{ borderRight: '1px solid var(--color-border-subtle)' }}
         >
-          <MipsEditor />
+          <div className={`flex-1 min-h-0 flex flex-col ${showConsole ? 'max-h-[calc(100%-180px)]' : ''}`}>
+            <MipsEditor />
+          </div>
+          {/* Console panel — persistent below editor */}
+          {showConsole && (
+            <div className="h-[180px] shrink-0">
+              <ConsolePanel />
+            </div>
+          )}
         </div>
 
         {/* Center column — Multi-View Canvas + Register File */}
