@@ -598,57 +598,67 @@ export function assemble(code: string, options?: AssembleOptions): ParseResult {
     }
   }
 
-  // Step 5: Expand pseudo-instructions (using label map for `la`)
-  let expandedLines = expandPseudoInstructions(textLines, preLabels);
-
-  // Step 6: First pass — find labels and compute final addresses
-  let address = 0;
-  const linesAfterLabels: RawLine[] = [];
-  for (const { text, line } of expandedLines) {
-    let remaining = text;
-    // Extract labels (can have multiple on one line)
-    const labelRegex = /^(\w+):\s*/;
-    let match;
-    while ((match = remaining.match(labelRegex))) {
-      const label = match[1];
-      if (labels.has(label) && !dataResult.dataLabels.has(label)) {
-        errors.push({ line, message: `Duplicate label: '${label}'`, severity: 'error' });
-      } else if (!dataResult.dataLabels.has(label)) {
-        labels.set(label, address);
-      }
-      remaining = remaining.substring(match[0].length);
-    }
-    if (remaining.trim()) {
-      linesAfterLabels.push({ text: remaining.trim(), line });
-      address += 4;
-    }
+  // Update labels with pre-pass addresses to start convergence
+  for (const [k, v] of preLabels) {
+    labels.set(k, v);
   }
 
-  // Step 7: Re-expand pseudo-instructions with final labels (for `la` resolution)
-  // This second pass is needed because expanding `la` in step 5 may have used pre-pass addresses
-  expandedLines = expandPseudoInstructions(textLines, labels);
+  // Step 5-7: Expand pseudo-instructions and find labels until convergence
+  let labelsStable = false;
+  let iterations = 0;
+  let expandedLines: RawLine[] = [];
+  let finalLines: RawLine[] = [];
 
-  // Re-do label pass with expanded lines
-  labels.clear();
-  for (const [name, addr] of dataResult.dataLabels) {
-    labels.set(name, addr);
-  }
-  address = 0;
-  const finalLines: RawLine[] = [];
-  for (const { text, line } of expandedLines) {
-    let remaining = text;
-    const labelRegex = /^(\w+):\s*/;
-    let match;
-    while ((match = remaining.match(labelRegex))) {
-      const label = match[1];
-      if (!dataResult.dataLabels.has(label)) {
-        labels.set(label, address);
-      }
-      remaining = remaining.substring(match[0].length);
+  while (!labelsStable && iterations < 10) {
+    iterations++;
+    expandedLines = expandPseudoInstructions(textLines, labels);
+
+    let address = 0;
+    const newLabels = new Map<string, number>();
+    for (const [name, addr] of dataResult.dataLabels) {
+      newLabels.set(name, addr);
     }
-    if (remaining.trim()) {
-      finalLines.push({ text: remaining.trim(), line });
-      address += 4;
+
+    finalLines = [];
+
+    for (const { text, line } of expandedLines) {
+      let remaining = text;
+      const labelRegex = /^(\w+):\s*/;
+      let match;
+      while ((match = remaining.match(labelRegex))) {
+        const label = match[1];
+        if (newLabels.has(label) && !dataResult.dataLabels.has(label)) {
+          if (iterations === 1) { // Only log duplicate labels on the first iteration
+            errors.push({ line, message: `Duplicate label: '${label}'`, severity: 'error' });
+          }
+        } else if (!dataResult.dataLabels.has(label)) {
+          newLabels.set(label, address);
+        }
+        remaining = remaining.substring(match[0].length);
+      }
+      if (remaining.trim()) {
+        finalLines.push({ text: remaining.trim(), line });
+        address += 4;
+      }
+    }
+
+    // Check if labels changed
+    labelsStable = true;
+    if (newLabels.size !== labels.size) {
+      labelsStable = false;
+    } else {
+      for (const [k, v] of newLabels) {
+        if (labels.get(k) !== v) {
+          labelsStable = false;
+          break;
+        }
+      }
+    }
+
+    // Update labels for next pass
+    labels.clear();
+    for (const [k, v] of newLabels) {
+      labels.set(k, v);
     }
   }
 

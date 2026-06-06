@@ -14,8 +14,8 @@ export type InstructionStatus = 'normal' | 'hazard' | 'forward' | 'stall' | 'bub
 export interface StageEntry {
   instruction: ParsedInstruction | null;
   status: InstructionStatus;
-  forwardFromA?: 'ex' | 'mem' | null;
-  forwardFromB?: 'ex' | 'mem' | null;
+  instruction: ParsedInstruction | null;
+  status: InstructionStatus;
 }
 
 export interface PipelineSnapshot {
@@ -103,8 +103,9 @@ interface IDEXLatch {
   op: string;
   valid: boolean;
   status: InstructionStatus;
-  forwardA: 'ex' | 'mem' | null;
-  forwardB: 'ex' | 'mem' | null;
+  writesHiLo: boolean;
+  hiResult: number;
+  loResult: number;
 }
 
 interface EXMEMLatch {
@@ -122,6 +123,9 @@ interface EXMEMLatch {
   op: string;
   valid: boolean;
   status: InstructionStatus;
+  writesHiLo: boolean;
+  hiResult: number;
+  loResult: number;
 }
 
 interface MEMWBLatch {
@@ -136,6 +140,9 @@ interface MEMWBLatch {
   op: string;
   valid: boolean;
   status: InstructionStatus;
+  writesHiLo: boolean;
+  hiResult: number;
+  loResult: number;
 }
 
 // ── Bubble Factories ─────────────────────────────────────────────────────
@@ -146,16 +153,16 @@ const bubbleIDEX = (): IDEXLatch => ({
   rs: -1, rt: -1, writeReg: -1,
   regWrite: false, memRead: false, memWrite: false, memToReg: false,
   isBranch: false, isJump: false, isJumpReg: false, isLoad: false, isStore: false,
-  isSyscall: false, op: '', valid: false, status: 'bubble', forwardA: null, forwardB: null,
+  isSyscall: false, op: '', valid: false, status: 'bubble', writesHiLo: false, hiResult: 0, loResult: 0,
 });
 const bubbleEXMEM = (): EXMEMLatch => ({
   instruction: null, pc: 0, aluResult: 0, writeData: 0, writeReg: -1,
   regWrite: false, memRead: false, memWrite: false, memToReg: false,
-  isLoad: false, isSyscall: false, op: '', valid: false, status: 'bubble',
+  isLoad: false, isSyscall: false, op: '', valid: false, status: 'bubble', writesHiLo: false, hiResult: 0, loResult: 0,
 });
 const bubbleMEMWB = (): MEMWBLatch => ({
   instruction: null, pc: 0, aluResult: 0, memData: 0, writeReg: -1,
-  regWrite: false, memToReg: false, isSyscall: false, op: '', valid: false, status: 'bubble',
+  regWrite: false, memToReg: false, isSyscall: false, op: '', valid: false, status: 'bubble', writesHiLo: false, hiResult: 0, loResult: 0,
 });
 
 // ── History Snapshot (compressed for circular buffer) ─────────────────────
@@ -267,25 +274,7 @@ export class MIPSPipelineEngine {
     // ── 1. Detect hazards ──────────────────────────────────────────
     const stallNeeded = this.detectLoadUseHazard();
 
-    // ── 2. Detect forwarding ───────────────────────────────────────
-    let forwardA: 'ex' | 'mem' | null = null;
-    let forwardB: 'ex' | 'mem' | null = null;
-    if (this.forwardingEnabled && this.ifId.valid) {
-      const inst = this.ifId.instruction!;
-      const readsRs = inst.readsRegs.length > 0 ? inst.readsRegs[0] : -1;
-      const readsRt = inst.readsRegs.length > 1 ? inst.readsRegs[1] : -1;
-
-      // EX forwarding: instruction currently in EX will be in MEM next cycle (when this instruction reaches EX)
-      if (this.idEx.valid && this.idEx.regWrite && this.idEx.writeReg > 0) {
-        if (readsRs === this.idEx.writeReg) forwardA = 'ex';
-        if (readsRt === this.idEx.writeReg) forwardB = 'ex';
-      }
-      // MEM forwarding: instruction currently in MEM will be in WB next cycle
-      if (this.exMem.valid && this.exMem.regWrite && this.exMem.writeReg > 0) {
-        if (readsRs === this.exMem.writeReg && forwardA !== 'ex') forwardA = 'mem';
-        if (readsRt === this.exMem.writeReg && forwardB !== 'ex') forwardB = 'mem';
-      }
-    }
+    // ── 2. Forwarding logic has been moved to EX stage ─────────────
 
     // ── 3. Write-Back stage ────────────────────────────────────────
     let syscallResult: SyscallResult | null = null;
@@ -297,6 +286,12 @@ export class MIPSPipelineEngine {
       this.stats.instructionsCompleted++;
     } else if (this.memWb.valid && !this.memWb.regWrite) {
       this.stats.instructionsCompleted++;
+    }
+
+    // Apply HI/LO register writes
+    if (this.memWb.valid && this.memWb.writesHiLo) {
+      this.hi = this.memWb.hiResult;
+      this.lo = this.memWb.loResult;
     }
 
     // Handle syscall in WB stage
@@ -330,6 +325,9 @@ export class MIPSPipelineEngine {
       op: this.exMem.op,
       valid: true,
       status: this.exMem.status,
+      writesHiLo: this.exMem.writesHiLo,
+      hiResult: this.exMem.hiResult,
+      loResult: this.exMem.loResult,
     } : bubbleMEMWB();
 
     if (this.exMem.valid && this.exMem.memWrite) {
@@ -343,25 +341,41 @@ export class MIPSPipelineEngine {
     let branchTarget = 0;
 
     if (this.idEx.valid) {
+      let forwardA: 'ex' | 'mem' | null = null;
+      let forwardB: 'ex' | 'mem' | null = null;
+
+      if (this.forwardingEnabled) {
+        // EX hazard
+        if (this.exMem.valid && this.exMem.regWrite && this.exMem.writeReg !== 0) {
+          if (this.exMem.writeReg === this.idEx.rs) forwardA = 'ex';
+          if (this.exMem.writeReg === this.idEx.rt) forwardB = 'ex';
+        }
+        // MEM hazard
+        if (this.memWb.valid && this.memWb.regWrite && this.memWb.writeReg !== 0) {
+          if (this.memWb.writeReg === this.idEx.rs && forwardA !== 'ex') forwardA = 'mem';
+          if (this.memWb.writeReg === this.idEx.rt && forwardB !== 'ex') forwardB = 'mem';
+        }
+      }
+
       // Apply forwarding to get actual operand values
       let aVal = this.idEx.rsVal;
       let bVal = this.idEx.rtVal;
 
       if (this.forwardingEnabled) {
-        if (this.idEx.forwardA === 'ex') {
+        if (forwardA === 'ex') {
           aVal = this.exMem.aluResult;
           this.stats.forwardCount++;
           this.events.onForward?.('ex', this.idEx.rs, aVal);
-        } else if (this.idEx.forwardA === 'mem') {
+        } else if (forwardA === 'mem') {
           aVal = this.memWb.memToReg ? this.memWb.memData : this.memWb.aluResult;
           this.stats.forwardCount++;
           this.events.onForward?.('mem', this.idEx.rs, aVal);
         }
-        if (this.idEx.forwardB === 'ex') {
+        if (forwardB === 'ex') {
           bVal = this.exMem.aluResult;
           this.stats.forwardCount++;
           this.events.onForward?.('ex', this.idEx.rt, bVal);
-        } else if (this.idEx.forwardB === 'mem') {
+        } else if (forwardB === 'mem') {
           bVal = this.memWb.memToReg ? this.memWb.memData : this.memWb.aluResult;
           this.stats.forwardCount++;
           this.events.onForward?.('mem', this.idEx.rt, bVal);
@@ -375,7 +389,41 @@ export class MIPSPipelineEngine {
         ? this.idEx.imm
         : bVal;
 
-      const aluResult = this.executeALU(this.idEx.op, aVal, aluInput2, this.idEx.shamt);
+      let actualHi = this.hi;
+      let actualLo = this.lo;
+      if (this.forwardingEnabled) {
+        if (this.memWb.valid && this.memWb.writesHiLo) {
+          actualHi = this.memWb.hiResult;
+          actualLo = this.memWb.loResult;
+        }
+        if (this.exMem.valid && this.exMem.writesHiLo) {
+          actualHi = this.exMem.hiResult;
+          actualLo = this.exMem.loResult;
+        }
+      }
+
+      const aluResult = this.executeALU(this.idEx.op, aVal, aluInput2, this.idEx.shamt, actualHi, actualLo);
+
+      // Handle mult/div locally in EX
+      let writesHiLo = false;
+      let hiResult = 0;
+      let loResult = 0;
+      if (this.idEx.op === 'mult' || this.idEx.op === 'multu' || this.idEx.op === 'div' || this.idEx.op === 'divu') {
+        writesHiLo = true;
+        if (this.idEx.op === 'mult') {
+          const result = BigInt(aVal) * BigInt(bVal);
+          hiResult = Number((result >> 32n) & 0xFFFFFFFFn);
+          loResult = Number(result & 0xFFFFFFFFn);
+        } else if (this.idEx.op === 'multu') {
+          const result = BigInt(aVal >>> 0) * BigInt(bVal >>> 0);
+          hiResult = Number((result >> 32n) & 0xFFFFFFFFn);
+          loResult = Number(result & 0xFFFFFFFFn);
+        } else if (this.idEx.op === 'div') {
+          if (bVal !== 0) { loResult = (aVal / bVal) | 0; hiResult = aVal % bVal; }
+        } else if (this.idEx.op === 'divu') {
+          if (bVal !== 0) { loResult = ((aVal >>> 0) / (bVal >>> 0)) | 0; hiResult = (aVal >>> 0) % (bVal >>> 0); }
+        }
+      }
 
       // Branch evaluation
       if (this.idEx.isBranch) {
@@ -395,11 +443,12 @@ export class MIPSPipelineEngine {
       if (this.idEx.isJump && !this.idEx.isBranch) {
         branchTaken = true;
         branchTarget = this.idEx.isJumpReg ? aVal : this.idEx.instruction!.targetAddress;
+        this.stats.flushCount++;
       }
 
       let exStatus: InstructionStatus = this.idEx.status;
       if (exStatus === 'bubble') exStatus = 'normal';
-      if (this.idEx.forwardA || this.idEx.forwardB) exStatus = 'forward';
+      if (forwardA || forwardB) exStatus = 'forward';
 
       newExMem = {
         instruction: this.idEx.instruction,
@@ -416,6 +465,9 @@ export class MIPSPipelineEngine {
         op: this.idEx.op,
         valid: true,
         status: exStatus,
+        writesHiLo,
+        hiResult,
+        loResult,
       };
     } else {
       newExMem = bubbleEXMEM();
@@ -456,9 +508,10 @@ export class MIPSPipelineEngine {
         isSyscall: inst.isSyscall,
         op: inst.op,
         valid: true,
-        status: this.getIDStatus(inst, forwardA, forwardB),
-        forwardA,
-        forwardB,
+        status: this.getIDStatus(inst, null, null),
+        writesHiLo: false,
+        hiResult: 0,
+        loResult: 0,
       };
     } else {
       newIdEx = bubbleIDEX();
@@ -623,7 +676,7 @@ export class MIPSPipelineEngine {
     return 'normal';
   }
 
-  private executeALU(op: string, a: number, b: number, shamt: number): number {
+  private executeALU(op: string, a: number, b: number, shamt: number, actualHi: number, actualLo: number): number {
     // All arithmetic is 32-bit signed
     switch (op) {
       case 'add': case 'addi': case 'addiu': case 'addu':
@@ -656,41 +709,20 @@ export class MIPSPipelineEngine {
         return (b >> (a & 0x1F)) | 0;
       case 'lui':
         return (b << 16) | 0;
-      case 'mult': {
-        const result = BigInt(a) * BigInt(b);
-        this.hi = Number((result >> 32n) & 0xFFFFFFFFn);
-        this.lo = Number(result & 0xFFFFFFFFn);
-        return 0;
-      }
-      case 'multu': {
-        const result = BigInt(a >>> 0) * BigInt(b >>> 0);
-        this.hi = Number((result >> 32n) & 0xFFFFFFFFn);
-        this.lo = Number(result & 0xFFFFFFFFn);
-        return 0;
-      }
-      case 'div': {
-        if (b !== 0) {
-          this.lo = (a / b) | 0;
-          this.hi = a % b;
-        }
-        return 0;
-      }
-      case 'divu': {
-        if (b !== 0) {
-          this.lo = ((a >>> 0) / (b >>> 0)) | 0;
-          this.hi = (a >>> 0) % (b >>> 0);
-        }
-        return 0;
-      }
+      case 'mult':
+      case 'multu':
+      case 'div':
+      case 'divu':
+        return 0; // Handled in EX stage
       case 'mfhi':
-        return this.hi;
+        return actualHi;
       case 'mflo':
-        return this.lo;
+        return actualLo;
       case 'lw': case 'lh': case 'lhu': case 'lb': case 'lbu':
       case 'sw': case 'sh': case 'sb':
         return (a + b) | 0; // Address calculation
       case 'jal': case 'jalr':
-        return this.idEx.pc + 4; // Return address (PC + 4 without delay slots)
+        return this.idEx.pc + 8; // Return address (PC + 8 for correct jump destination)
       case 'jr':
         return a;
       default:
@@ -784,8 +816,6 @@ export class MIPSPipelineEngine {
         ID: {
           instruction: this.idEx.valid ? this.idEx.instruction : null,
           status: this.idEx.valid ? this.idEx.status : 'bubble',
-          forwardFromA: this.idEx.forwardA,
-          forwardFromB: this.idEx.forwardB,
         },
         EX: {
           instruction: this.exMem.valid ? this.exMem.instruction : null,
@@ -811,11 +841,18 @@ export class MIPSPipelineEngine {
   }
 
   private takeHistoryEntry(): HistoryEntry {
+    const memoryDelta = new Map<number, number>();
+    for (const [k, v] of this.memory) {
+      if (this.initialMemory.get(k) !== v) {
+        memoryDelta.set(k, v);
+      }
+    }
+
     return {
       cycle: this.cycle,
       pc: this.pc,
       registers: new Int32Array(this.registers),
-      memoryDelta: new Map(this.memory),
+      memoryDelta,
       hi: this.hi,
       lo: this.lo,
       finished: this.finished,
@@ -831,7 +868,10 @@ export class MIPSPipelineEngine {
     this.cycle = entry.cycle;
     this.pc = entry.pc;
     this.registers = new Int32Array(entry.registers);
-    this.memory = new Map(entry.memoryDelta);
+    this.memory = new Map(this.initialMemory);
+    for (const [k, v] of entry.memoryDelta) {
+      this.memory.set(k, v);
+    }
     this.hi = entry.hi;
     this.lo = entry.lo;
     this.finished = entry.finished;

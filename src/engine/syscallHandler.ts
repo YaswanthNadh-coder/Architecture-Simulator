@@ -84,16 +84,17 @@ export function handleSyscall(
     case SYSCALL.PRINT_STRING: {
       // Print null-terminated string starting at address in $a0
       const addr = registers[4]; // $a0
-      let str = '';
+      const bytes: number[] = [];
       let pos = addr;
       const maxLen = 4096; // Safety limit
       for (let i = 0; i < maxLen; i++) {
         const byte = memory.get(pos) ?? 0;
         if (byte === 0) break;
-        str += String.fromCharCode(byte);
+        bytes.push(byte);
         pos++;
       }
-      result.outputText = str;
+      const decoder = new TextDecoder('utf-8');
+      result.outputText = decoder.decode(new Uint8Array(bytes));
       break;
     }
 
@@ -182,9 +183,11 @@ export function completeSyscallInput(
       const addr = registers[4]; // $a0
       const maxLen = registers[5]; // $a1
       const str = String(inputValue);
-      const len = Math.min(str.length, maxLen - 1); // Leave room for null terminator
+      const encoder = new TextEncoder();
+      const bytes = encoder.encode(str);
+      const len = Math.min(bytes.length, maxLen - 1); // Leave room for null terminator
       for (let i = 0; i < len; i++) {
-        memory.set(addr + i, str.charCodeAt(i) & 0xFF);
+        memory.set(addr + i, bytes[i]);
       }
       memory.set(addr + len, 0); // null terminator
       break;
