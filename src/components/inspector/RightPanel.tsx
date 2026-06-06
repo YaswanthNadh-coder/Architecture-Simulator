@@ -1,7 +1,10 @@
-import { ExternalLink, AlertTriangle, Zap, Cpu, BookOpen } from 'lucide-react';
+import { ExternalLink, AlertTriangle, Zap, Cpu, BookOpen, TerminalSquare } from 'lucide-react';
 import { useSimulatorStore } from '../../store/simulatorStore';
+import { ISAReference } from './ISAReference';
+import { useState } from 'react';
 
 export const RightPanel = () => {
+  const [activeTab, setActiveTab] = useState<'sim' | 'isa'>('sim');
   const { cycle, pipeline, forwardingEnabled, toggleForwarding, stats } = useSimulatorStore();
 
   // Derive active hazards from current pipeline state
@@ -17,9 +20,33 @@ export const RightPanel = () => {
   const usefulPct = stats.efficiency;
 
   return (
-    <div className="w-[240px] xl:w-64 h-full bg-bg-surface border-l border-border-subtle flex flex-col overflow-y-auto shrink-0">
+    <div className="w-[240px] xl:w-72 h-full bg-bg-surface border-l border-border-subtle flex flex-col overflow-hidden shrink-0">
+      {/* Tabs */}
+      <div className="flex px-4 pt-3 border-b border-border-subtle shrink-0 gap-4">
+        <button
+          onClick={() => setActiveTab('sim')}
+          className={`pb-2 text-xs font-bold uppercase tracking-wider transition-colors border-b-2 ${
+            activeTab === 'sim' ? 'text-brand-400 border-brand-500' : 'text-text-muted border-transparent hover:text-white'
+          }`}
+        >
+          Simulation
+        </button>
+        <button
+          onClick={() => setActiveTab('isa')}
+          className={`pb-2 text-xs font-bold uppercase tracking-wider transition-colors border-b-2 ${
+            activeTab === 'isa' ? 'text-brand-400 border-brand-500' : 'text-text-muted border-transparent hover:text-white'
+          }`}
+        >
+          ISA Reference
+        </button>
+      </div>
 
-      {/* ── Hazards ─────────────────────────────────────────── */}
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto">
+        {activeTab === 'isa' ? (
+          <ISAReference />
+        ) : (
+          <div className="flex flex-col h-full">
       <Section title="Hazards" icon={<AlertTriangle size={13} className="text-hazard" />}>
         {hazardStages.length === 0 && forwardStages.length === 0 && stallStages.length === 0 ? (
           <p className="text-text-muted text-xs italic">None detected at cycle {cycle}</p>
@@ -150,6 +177,9 @@ export const RightPanel = () => {
           </button>
         </div>
       </Section>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

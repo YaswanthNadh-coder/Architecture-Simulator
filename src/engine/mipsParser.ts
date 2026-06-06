@@ -447,6 +447,27 @@ function expandPseudoInstructions(lines: RawLine[], allLabels: Map<string, numbe
         expanded.push({ text: `beq $at, $zero, ${operands[2]}`, line });
         break;
       }
+      case 'lw':
+      case 'sw': {
+        const memMatch = operands[1]?.trim().match(/^(-?\d+|0x[\da-fA-F]+)?\s*\(\s*(\$\w+)\s*\)$/);
+        if (!memMatch) {
+          // Looks like a label, e.g., lw $t0, my_label
+          const rt = operands[0];
+          const labelName = operands[1]?.trim();
+          const addr = labelName ? allLabels.get(labelName) : undefined;
+          if (addr !== undefined) {
+            const upper = (addr >>> 16) & 0xFFFF;
+            const lower = addr & 0xFFFF;
+            expanded.push({ text: `${labelPrefix}lui $at, ${upper}`, line });
+            expanded.push({ text: `${op} ${rt}, ${lower}($at)`, line });
+          } else {
+            expanded.push({ text, line }); // Will trigger error in assembler
+          }
+        } else {
+          expanded.push({ text, line });
+        }
+        break;
+      }
       default:
         expanded.push({ text, line });
     }

@@ -275,29 +275,15 @@ export class MIPSPipelineEngine {
       const readsRs = inst.readsRegs.length > 0 ? inst.readsRegs[0] : -1;
       const readsRt = inst.readsRegs.length > 1 ? inst.readsRegs[1] : -1;
 
-      // EX forwarding (from EX/MEM)
-      if (this.exMem.valid && this.exMem.regWrite && this.exMem.writeReg > 0) {
-        if (readsRs === this.exMem.writeReg) {
-          forwardA = 'ex';
-          this.events.onForward?.('ex', this.exMem.writeReg, this.exMem.aluResult);
-        }
-        if (readsRt === this.exMem.writeReg) {
-          forwardB = 'ex';
-          this.events.onForward?.('ex', this.exMem.writeReg, this.exMem.aluResult);
-        }
+      // EX forwarding: instruction currently in EX will be in MEM next cycle (when this instruction reaches EX)
+      if (this.idEx.valid && this.idEx.regWrite && this.idEx.writeReg > 0) {
+        if (readsRs === this.idEx.writeReg) forwardA = 'ex';
+        if (readsRt === this.idEx.writeReg) forwardB = 'ex';
       }
-      // MEM forwarding (from MEM/WB) — only if not already forwarded from EX
-      if (this.memWb.valid && this.memWb.regWrite && this.memWb.writeReg > 0) {
-        if (readsRs === this.memWb.writeReg && forwardA !== 'ex') {
-          forwardA = 'mem';
-          const val = this.memWb.memToReg ? this.memWb.memData : this.memWb.aluResult;
-          this.events.onForward?.('mem', this.memWb.writeReg, val);
-        }
-        if (readsRt === this.memWb.writeReg && forwardB !== 'ex') {
-          forwardB = 'mem';
-          const val = this.memWb.memToReg ? this.memWb.memData : this.memWb.aluResult;
-          this.events.onForward?.('mem', this.memWb.writeReg, val);
-        }
+      // MEM forwarding: instruction currently in MEM will be in WB next cycle
+      if (this.exMem.valid && this.exMem.regWrite && this.exMem.writeReg > 0) {
+        if (readsRs === this.exMem.writeReg && forwardA !== 'ex') forwardA = 'mem';
+        if (readsRt === this.exMem.writeReg && forwardB !== 'ex') forwardB = 'mem';
       }
     }
 
@@ -365,16 +351,20 @@ export class MIPSPipelineEngine {
         if (this.idEx.forwardA === 'ex') {
           aVal = this.exMem.aluResult;
           this.stats.forwardCount++;
+          this.events.onForward?.('ex', this.idEx.rs, aVal);
         } else if (this.idEx.forwardA === 'mem') {
           aVal = this.memWb.memToReg ? this.memWb.memData : this.memWb.aluResult;
           this.stats.forwardCount++;
+          this.events.onForward?.('mem', this.idEx.rs, aVal);
         }
         if (this.idEx.forwardB === 'ex') {
           bVal = this.exMem.aluResult;
           this.stats.forwardCount++;
+          this.events.onForward?.('ex', this.idEx.rt, bVal);
         } else if (this.idEx.forwardB === 'mem') {
           bVal = this.memWb.memToReg ? this.memWb.memData : this.memWb.aluResult;
           this.stats.forwardCount++;
+          this.events.onForward?.('mem', this.idEx.rt, bVal);
         }
       }
 
@@ -653,11 +643,11 @@ export class MIPSPipelineEngine {
       case 'sltu': case 'sltiu':
         return ((a >>> 0) < (b >>> 0)) ? 1 : 0;
       case 'sll':
-        return (b << shamt) | 0;
+        return (a << shamt) | 0;
       case 'srl':
-        return (b >>> shamt) | 0;
+        return (a >>> shamt) | 0;
       case 'sra':
-        return (b >> shamt) | 0;
+        return (a >> shamt) | 0;
       case 'sllv':
         return (b << (a & 0x1F)) | 0;
       case 'srlv':
@@ -700,7 +690,7 @@ export class MIPSPipelineEngine {
       case 'sw': case 'sh': case 'sb':
         return (a + b) | 0; // Address calculation
       case 'jal': case 'jalr':
-        return a + 8; // Return address (PC + 8 in pipeline)
+        return this.idEx.pc + 4; // Return address (PC + 4 without delay slots)
       case 'jr':
         return a;
       default:

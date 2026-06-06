@@ -4,6 +4,7 @@ import { assemble } from '../../engine/mipsParser';
 import { Play, Pause, SkipForward, SkipBack, RotateCcw, Zap } from 'lucide-react';
 import { useEffect, useRef, useCallback } from 'react';
 import type * as Monaco from 'monaco-editor';
+import { ExamplesDrawer } from './ExamplesDrawer';
 
 // ── MIPS Language Data ───────────────────────────────────────────────────
 
@@ -331,17 +332,20 @@ export const MipsEditor = () => {
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border-subtle bg-bg-surface shrink-0">
         <h2 className="text-xs font-bold tracking-[0.15em] text-text-muted uppercase">Editor</h2>
-        <button
-          onClick={doAssemble}
-          className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-all font-medium ${
-            isAssembled
-              ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-              : 'bg-brand-500/15 text-brand-400 hover:bg-brand-500/25 border border-brand-500/30'
-          }`}
-        >
-          <Zap size={12} />
-          {isAssembled ? 'Assembled ✓' : 'Assemble'}
-        </button>
+        <div className="flex items-center gap-2">
+          <ExamplesDrawer />
+          <button
+            onClick={doAssemble}
+            className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-all font-medium ${
+              isAssembled
+                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                : 'bg-brand-500/15 text-brand-400 hover:bg-brand-500/25 border border-brand-500/30'
+            }`}
+          >
+            <Zap size={12} />
+            {isAssembled ? 'Assembled ✓' : 'Assemble'}
+          </button>
+        </div>
       </div>
 
       {/* Monaco Editor */}

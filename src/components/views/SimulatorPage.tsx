@@ -12,8 +12,11 @@ import { useSimulatorStore } from '../../store/simulatorStore';
 import { DatapathView } from './DatapathView';
 import { TimingView } from './TimingView';
 import { MemoryView } from './MemoryView';
+import { DiffView } from './DiffView';
+import { GradingView } from './GradingView';
+import { WorkspacePanel } from './WorkspacePanel';
 
-type TabView = 'Pipeline' | 'Datapath' | 'Timing' | 'Memory';
+type TabView = 'Pipeline' | 'Datapath' | 'Timing' | 'Memory' | 'Diff' | 'Grading';
 
 export const SimulatorPage = () => {
   const { cycle, waitingForInput } = useSimulatorStore();
@@ -50,7 +53,7 @@ export const SimulatorPage = () => {
 
         {/* View tabs */}
         <nav className="flex items-center gap-1">
-          {(['Pipeline', 'Datapath', 'Timing', 'Memory'] as TabView[]).map((tab) => (
+          {(['Pipeline', 'Datapath', 'Timing', 'Memory', 'Diff', 'Grading'] as TabView[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -75,6 +78,9 @@ export const SimulatorPage = () => {
           >
             Console
           </button>
+          
+          <div className="w-px h-4 bg-border-subtle mx-1" />
+          <WorkspacePanel />
         </nav>
       </header>
 
@@ -104,6 +110,8 @@ export const SimulatorPage = () => {
             {activeTab === 'Datapath' && <DatapathView />}
             {activeTab === 'Timing' && <TimingView />}
             {activeTab === 'Memory' && <MemoryView />}
+            {activeTab === 'Diff' && <DiffView />}
+            {activeTab === 'Grading' && <GradingView />}
           </div>
 
           {/* Register File (Always visible) */}
