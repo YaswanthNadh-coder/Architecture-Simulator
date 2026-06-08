@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSimulatorStore } from '../../store/simulatorStore';
 import { assemble } from '../../engine/mipsParser';
 import { MIPSPipelineEngine } from '../../engine/pipelineEngine';
@@ -13,12 +13,7 @@ export const DiffView = () => {
   const [error, setError] = useState<string | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
 
-  useEffect(() => {
-    runComparison();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [code]);
-
-  const runComparison = () => {
+  const runComparison = useCallback(() => {
     if (!code.trim()) {
       setStatsOn(null);
       setStatsOff(null);
@@ -83,7 +78,11 @@ export const DiffView = () => {
         setIsSimulating(false);
       }
     }, 100); // give UI time to render loading state
-  };
+  }, [code]);
+
+  useEffect(() => {
+    runComparison();
+  }, [runComparison]);
 
   if (error) {
     return (

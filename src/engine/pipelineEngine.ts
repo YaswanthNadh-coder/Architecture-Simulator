@@ -6,6 +6,7 @@
 
 import type { ParsedInstruction } from './mipsParser';
 import { handleSyscall, type SyscallResult } from './syscallHandler';
+import { CacheSimulator, type CacheConfig } from './cacheSimulator';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -105,6 +106,8 @@ interface IDEXLatch {
   writesHiLo: boolean;
   hiResult: number;
   loResult: number;
+  predictedTaken: boolean;
+  fallthroughPC: number;
 }
 
 interface EXMEMLatch {
@@ -152,7 +155,7 @@ const bubbleIDEX = (): IDEXLatch => ({
   rs: -1, rt: -1, writeReg: -1,
   regWrite: false, memRead: false, memWrite: false, memToReg: false,
   isBranch: false, isJump: false, isJumpReg: false, isLoad: false, isStore: false,
-  isSyscall: false, op: '', valid: false, status: 'bubble', writesHiLo: false, hiResult: 0, loResult: 0,
+  isSyscall: false, op: '', valid: false, status: 'bubble', writesHiLo: false, hiResult: 0, loResult: 0, predictedTaken: false, fallthroughPC: 0,
 });
 const bubbleEXMEM = (): EXMEMLatch => ({
   instruction: null, pc: 0, aluResult: 0, writeData: 0, writeReg: -1,
@@ -209,7 +212,20 @@ export class MIPSPipelineEngine {
 
   // Config
   public forwardingEnabled = true;
+  public branchPrediction: 'not-taken' | 'always-taken' = 'not-taken';
+  public memoryLatency = 0;
   public maxCycles = 10000;
+  
+  // Cache
+  public cache = new CacheSimulator({
+    enabled: false,
+    cacheSize: 256,
+    blockSize: 16,
+    associativity: 1,
+    missPenalty: 10,
+  });
+
+  private memStallCounter = 0;
 
   // Cycle history for timing diagram
   public cycleHistory: CycleRecord[] = [];
@@ -256,6 +272,8 @@ export class MIPSPipelineEngine {
     this.history = [];
     this.cycleHistory = [];
     this.lastModifiedAddresses = [];
+    this.memStallCounter = 0;
+    this.cache.reset();
     // Save initial snapshot
     this.history.push(this.takeHistoryEntry());
   }
@@ -289,6 +307,76 @@ export class MIPSPipelineEngine {
       this.stats.instructionsCompleted++;
     } else if (this.memWb.valid && !this.memWb.regWrite) {
       this.stats.instructionsCompleted++;
+    }
+
+    // Apply HI/LO register writes
+    if (this.memWb.valid && this.memWb.writesHiLo) {
+      this.hi = this.memWb.hiResult;
+      this.lo = this.memWb.loResult;
+    }
+
+    // Handle syscall in WB stage
+    if (this.memWb.valid && this.memWb.isSyscall) {
+      const v0 = this.registers[2]; // $v0
+      syscallResult = handleSyscall(v0, this.registers, this.memory);
+      consoleOutput = syscallResult.outputText;
+
+      // Apply register writes from syscall
+      for (const [reg, val] of syscallResult.registerWrites) {
+        this.registers[reg] = val;
+      }
+
+      if (syscallResult.exit) {
+        this.finished = true;
+        this.terminationReason = 'normal';
+      }
+
+      this.events.onSyscall?.(v0, syscallResult);
+    }
+
+    // ── Memory Stall Logic ──
+    let memStallNeeded = false;
+    if (this.memStallCounter > 0) {
+      this.memStallCounter--;
+      if (this.memStallCounter > 0) memStallNeeded = true;
+    } else if (this.exMem.valid && (this.exMem.memRead || this.exMem.memWrite)) {
+      let latency = this.memoryLatency;
+      if (this.cache.config.enabled) {
+        const addr = this.exMem.aluResult;
+        const result = this.cache.access(addr, this.exMem.memWrite);
+        latency = result.stallCycles;
+      }
+      
+      if (latency > 0) {
+        this.memStallCounter = latency;
+        memStallNeeded = true;
+      }
+    }
+
+    if (memStallNeeded) {
+      this.stats.stallCycles++;
+      this.events.onStall?.('memory latency', this.cycle);
+
+      this.memWb = bubbleMEMWB();
+      this.memWb.status = 'stall';
+
+      if (!this.finished) {
+        this.finished = this.isPipelineDrained();
+      }
+
+      this.cycleHistory.push({
+        cycle: this.cycle,
+        IF: { instruction: this.ifId.valid ? this.ifId.instruction : null, status: this.ifId.valid ? 'normal' : 'bubble' },
+        ID: { instruction: this.idEx.valid ? this.idEx.instruction : null, status: this.idEx.valid ? this.idEx.status : 'bubble' },
+        EX: { instruction: this.exMem.valid ? this.exMem.instruction : null, status: this.exMem.valid ? 'stall' : 'bubble' },
+        MEM: { instruction: this.memWb.valid ? this.memWb.instruction : null, status: this.memWb.valid ? this.memWb.status : 'bubble' },
+        WB: { instruction: this.memWb.valid ? this.memWb.instruction : null, status: this.memWb.valid ? this.memWb.status : 'bubble' },
+      });
+
+      this.history.push(this.takeHistoryEntry());
+      if (this.history.length > MAX_HISTORY) this.history.shift();
+
+      return this.takeSnapshot(consoleOutput, syscallResult);
     }
 
     // Apply HI/LO register writes
@@ -432,14 +520,24 @@ export class MIPSPipelineEngine {
       // Branch evaluation
       if (this.idEx.isBranch) {
         this.stats.branchCount++;
-        branchTaken = this.evaluateBranch(this.idEx.op, aVal, bVal);
-        if (branchTaken) {
-          branchTarget = this.idEx.instruction!.targetAddress;
-          this.stats.branchMispredictions++; // We predict not-taken
+        const actuallyTaken = this.evaluateBranch(this.idEx.op, aVal, bVal);
+        
+        if (actuallyTaken !== this.idEx.predictedTaken) {
+          this.stats.branchMispredictions++;
           this.stats.flushCount++;
-          this.events.onBranchResolved?.(true, branchTarget, this.cycle);
+          branchTaken = true; // Tell Fetch to flush and redirect
+          if (actuallyTaken) {
+             // Predicted not-taken, but was taken.
+             branchTarget = this.idEx.instruction!.targetAddress;
+             this.events.onBranchResolved?.(true, branchTarget, this.cycle);
+          } else {
+             // Predicted taken, but was not taken.
+             branchTarget = this.idEx.fallthroughPC;
+             this.events.onBranchResolved?.(false, branchTarget, this.cycle);
+          }
         } else {
-          this.events.onBranchResolved?.(false, 0, this.cycle);
+          // Predicted correctly!
+          this.events.onBranchResolved?.(actuallyTaken, actuallyTaken ? this.idEx.instruction!.targetAddress : 0, this.cycle);
         }
       }
 
@@ -479,6 +577,8 @@ export class MIPSPipelineEngine {
 
     // ── 6. Decode stage ────────────────────────────────────────────
     let newIdEx: IDEXLatch;
+    let idPredictedTaken = false;
+    let idBranchTarget = 0;
     if (stallNeeded) {
       // Stall: insert bubble into EX, freeze IF and ID
       newIdEx = bubbleIDEX();
@@ -516,7 +616,15 @@ export class MIPSPipelineEngine {
         writesHiLo: false,
         hiResult: 0,
         loResult: 0,
+        predictedTaken: false,
+        fallthroughPC: this.ifId.npc,
       };
+
+      if (inst.isBranch && this.branchPrediction === 'always-taken') {
+        newIdEx.predictedTaken = true;
+        idPredictedTaken = true;
+        idBranchTarget = inst.targetAddress;
+      }
     } else {
       newIdEx = bubbleIDEX();
     }
@@ -529,6 +637,10 @@ export class MIPSPipelineEngine {
     } else if (branchTaken) {
       // Flush instruction fetched at wrong PC, fetch from branch target
       this.pc = branchTarget;
+      newIfId = this.fetchInstruction();
+    } else if (idPredictedTaken) {
+      // Predict taken, fetch from target next cycle, discard sequentially fetched instruction
+      this.pc = idBranchTarget;
       newIfId = this.fetchInstruction();
     } else {
       newIfId = this.fetchInstruction();

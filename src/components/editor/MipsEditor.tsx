@@ -157,7 +157,7 @@ const handleEditorMount: OnMount = (_editor, monaco) => {
 
   // ── Autocompletion ──────────────────────────────────────────────
   monaco.languages.registerCompletionItemProvider('mips', {
-    provideCompletionItems: (model: any, position: any) => {
+    provideCompletionItems: (model: Monaco.editor.ITextModel, position: Monaco.Position) => {
       const word = model.getWordUntilPosition(position);
       const range = {
         startLineNumber: position.lineNumber,
@@ -210,7 +210,7 @@ const handleEditorMount: OnMount = (_editor, monaco) => {
 
   // ── Hover Documentation ─────────────────────────────────────────
   monaco.languages.registerHoverProvider('mips', {
-    provideHover: (model: any, position: any) => {
+    provideHover: (model: Monaco.editor.ITextModel, position: Monaco.Position) => {
       const word = model.getWordAtPosition(position);
       if (!word) return null;
 
@@ -320,11 +320,12 @@ export const MipsEditor = () => {
     };
   }, []);
 
+  const initialCodeRef = useRef(code);
+
   // Initial lint on mount
   useEffect(() => {
-    const timer = setTimeout(() => runLinting(code), 500);
+    const timer = setTimeout(() => runLinting(initialCodeRef.current), 500);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

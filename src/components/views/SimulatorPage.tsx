@@ -16,7 +16,7 @@ import { TimingView } from './TimingView';
 import { MemoryView } from './MemoryView';
 import { DiffView } from './DiffView';
 import { GradingView } from './GradingView';
-import { WorkspacePanel } from './WorkspacePanel';
+import { ArchitectureSettingsPanel } from '../settings/ArchitectureSettingsPanel';
 
 type TabView = 'Pipeline' | 'Datapath' | 'Timing' | 'Memory' | 'Diff' | 'Grading';
 
@@ -62,8 +62,7 @@ export const SimulatorPage = () => {
       setProjectName('Scratchpad');
       setActiveProjectId(null);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+  }, [projectId, setProjectName, setCode, setActiveProjectId]);
 
   useEffect(() => {
     if (activeProjectId === projectId && projectId) {
@@ -75,8 +74,8 @@ export const SimulatorPage = () => {
           projects[projIndex].modified = new Date().toISOString();
           localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
         }
-      } catch {
-        // ignore
+      } catch (e) {
+        console.error('Failed to save project to localStorage:', e);
       }
     }
   }, [code, activeProjectId, projectId]);
@@ -147,7 +146,7 @@ export const SimulatorPage = () => {
           </button>
           
           <div className="w-px h-4 bg-border-subtle mx-1" />
-          <WorkspacePanel />
+          <ArchitectureSettingsPanel />
         </nav>
       </header>
 

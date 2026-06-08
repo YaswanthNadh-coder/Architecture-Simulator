@@ -59,6 +59,8 @@ interface SimulatorStore {
   // Control
   isPlaying: boolean;
   forwardingEnabled: boolean;
+  branchPrediction: 'not-taken' | 'always-taken';
+  memoryLatency: number;
   speed: number;
   breakpoints: Set<number>;
 
@@ -91,6 +93,8 @@ interface SimulatorStore {
   prevCycle: () => void;
   togglePlay: () => void;
   toggleForwarding: () => void;
+  setBranchPrediction: (strategy: 'not-taken' | 'always-taken') => void;
+  setMemoryLatency: (latency: number) => void;
   reset: () => void;
   setBreakpoint: (line: number) => void;
   removeBreakpoint: (line: number) => void;
@@ -217,6 +221,8 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
 
   isPlaying: false,
   forwardingEnabled: true,
+  branchPrediction: 'not-taken',
+  memoryLatency: 0,
   speed: 800,
   breakpoints: new Set(),
 
@@ -238,7 +244,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
   setCode: (code) => set({ code, isAssembled: false }),
 
   assemble: () => {
-    const { code, forwardingEnabled, blockedInstructions } = get();
+    const { code, forwardingEnabled, branchPrediction, memoryLatency, blockedInstructions } = get();
     const result = assemble(code, {
       blockedInstructions: blockedInstructions.length > 0 ? blockedInstructions : undefined,
     });
@@ -255,6 +261,8 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
     }
 
     engine.forwardingEnabled = forwardingEnabled;
+    engine.branchPrediction = branchPrediction;
+    engine.memoryLatency = memoryLatency;
     engine.loadProgram(result.instructions);
     engine.loadDataSegment(result.dataSegment);
 
@@ -414,6 +422,18 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
     if (state.isAssembled) {
       get().assemble();
     }
+  },
+
+  setBranchPrediction: (strategy) => {
+    engine.branchPrediction = strategy;
+    set({ branchPrediction: strategy });
+    if (get().isAssembled) get().assemble();
+  },
+
+  setMemoryLatency: (latency) => {
+    engine.memoryLatency = latency;
+    set({ memoryLatency: latency });
+    if (get().isAssembled) get().assemble();
   },
 
   reset: () => {
