@@ -14,8 +14,6 @@ export type InstructionStatus = 'normal' | 'hazard' | 'forward' | 'stall' | 'bub
 export interface StageEntry {
   instruction: ParsedInstruction | null;
   status: InstructionStatus;
-  instruction: ParsedInstruction | null;
-  status: InstructionStatus;
 }
 
 export interface PipelineSnapshot {
@@ -49,6 +47,7 @@ export interface CycleSnapshot {
   consoleOutput: string;
   syscallResult: SyscallResult | null;
   modifiedAddresses: number[];
+  terminationReason?: 'normal' | 'max_cycles_reached' | 'exception';
 }
 
 export interface EngineStats {
@@ -180,6 +179,7 @@ interface HistoryEntry {
   exMem: EXMEMLatch;
   memWb: MEMWBLatch;
   stats: EngineStats;
+  terminationReason?: 'normal' | 'max_cycles_reached' | 'exception';
 }
 
 // ── Main Engine ──────────────────────────────────────────────────────────
@@ -196,6 +196,7 @@ export class MIPSPipelineEngine {
   private lo = 0;
   private cycle = 0;
   private finished = false;
+  private terminationReason?: 'normal' | 'max_cycles_reached' | 'exception';
 
   // Pipeline latches
   private ifId: IFIDLatch = bubbleIFID();
@@ -246,6 +247,7 @@ export class MIPSPipelineEngine {
     this.lo = 0;
     this.cycle = 0;
     this.finished = false;
+    this.terminationReason = undefined;
     this.ifId = bubbleIFID();
     this.idEx = bubbleIDEX();
     this.exMem = bubbleEXMEM();
@@ -268,6 +270,7 @@ export class MIPSPipelineEngine {
     // Safety: max cycle limit
     if (this.cycle > this.maxCycles) {
       this.finished = true;
+      this.terminationReason = 'max_cycles_reached';
       return this.takeSnapshot();
     }
 
@@ -307,6 +310,7 @@ export class MIPSPipelineEngine {
 
       if (syscallResult.exit) {
         this.finished = true;
+        this.terminationReason = 'normal';
       }
 
       this.events.onSyscall?.(v0, syscallResult);
@@ -837,6 +841,7 @@ export class MIPSPipelineEngine {
       consoleOutput,
       syscallResult,
       modifiedAddresses: [...this.lastModifiedAddresses],
+      terminationReason: this.terminationReason,
     };
   }
 
@@ -861,6 +866,7 @@ export class MIPSPipelineEngine {
       exMem: { ...this.exMem },
       memWb: { ...this.memWb },
       stats: { ...this.stats },
+      terminationReason: this.terminationReason,
     };
   }
 
@@ -875,6 +881,7 @@ export class MIPSPipelineEngine {
     this.hi = entry.hi;
     this.lo = entry.lo;
     this.finished = entry.finished;
+    this.terminationReason = entry.terminationReason;
     this.stats = { ...entry.stats };
     this.ifId = { ...entry.ifId };
     this.idEx = { ...entry.idEx };

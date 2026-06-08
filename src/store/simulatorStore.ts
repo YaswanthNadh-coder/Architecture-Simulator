@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { assemble, type ParsedInstruction, type ParseError, REG_NAMES } from '../engine/mipsParser';
-import { MIPSPipelineEngine, type PipelineSnapshot, type EngineStats, type CycleRecord } from '../engine/pipelineEngine';
+import { assemble, type ParsedInstruction, type ParseError } from '../engine/mipsParser';
+import { MIPSPipelineEngine, type PipelineSnapshot, type EngineStats } from '../engine/pipelineEngine';
 import { completeSyscallInput, SYSCALL } from '../engine/syscallHandler';
 
 // ── Re-export types for UI compatibility ─────────────────────────────────
@@ -46,8 +46,6 @@ interface SimulatorStore {
   // Engine state
   cycle: number;
   pc: number;
-  registers: Record<string, string>;
-  memory: Map<number, number>;
   pipeline: PipelineState;
   isFinished: boolean;
 
@@ -83,8 +81,6 @@ interface SimulatorStore {
   waitingForInput: boolean;
   pendingSyscallV0: number;
 
-  // Cycle history for timing diagram
-  cycleHistory: CycleRecord[];
 
   // Blocked instructions (for assignment sandboxing)
   blockedInstructions: string[];
@@ -103,6 +99,7 @@ interface SimulatorStore {
   submitConsoleInput: (input: string) => void;
   clearConsole: () => void;
   setBlockedInstructions: (blocked: string[]) => void;
+  getEngine: () => MIPSPipelineEngine;
 }
 
 // ── Engine Instance ──────────────────────────────────────────────────────
@@ -110,14 +107,6 @@ interface SimulatorStore {
 const engine = new MIPSPipelineEngine();
 
 // ── Helpers ──────────────────────────────────────────────────────────────
-
-function registersToRecord(regs: Int32Array): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (let i = 0; i < 32; i++) {
-    result[REG_NAMES[i]] = '0x' + ((regs[i] >>> 0).toString(16)).toUpperCase().padStart(8, '0');
-  }
-  return result;
-}
 
 function snapshotToPipelineState(snap: PipelineSnapshot): PipelineState {
   const convert = (entry: PipelineSnapshot[keyof PipelineSnapshot], stageName: string): StageState => ({
@@ -199,7 +188,17 @@ fib_loop:
   syscall
 `;
 
-let autoPlayInterval: ReturnType<typeof setInterval> | null = null;
+const timerWorker = new Worker(new URL('../workers/timerWorker.ts', import.meta.url), { type: 'module' });
+
+timerWorker.onmessage = () => {
+  const s = useSimulatorStore.getState();
+  if (s.isFinished || !s.isPlaying || s.waitingForInput) {
+    timerWorker.postMessage({ command: 'stop' });
+    useSimulatorStore.setState({ isPlaying: false });
+    return;
+  }
+  s.nextCycle();
+};
 
 // ── Store ────────────────────────────────────────────────────────────────
 
@@ -207,8 +206,6 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
   code: INITIAL_CODE,
   cycle: 0,
   pc: 0,
-  registers: registersToRecord(new Int32Array(32)),
-  memory: new Map(),
   pipeline: EMPTY_PIPELINE,
   isFinished: false,
 
@@ -234,8 +231,9 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
   waitingForInput: false,
   pendingSyscallV0: 0,
 
-  cycleHistory: [],
   blockedInstructions: [],
+
+  getEngine: () => engine,
 
   setCode: (code) => set({ code, isAssembled: false }),
 
@@ -270,8 +268,6 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
       isAssembled: true,
       cycle: 0,
       pc: snap.pc,
-      registers: registersToRecord(snap.registers),
-      memory: new Map(snap.memory),
       pipeline: EMPTY_PIPELINE,
       isFinished: false,
       stats: EMPTY_STATS,
@@ -284,14 +280,10 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
       consoleOutput: [],
       waitingForInput: false,
       pendingSyscallV0: 0,
-      cycleHistory: [],
     });
 
     // Stop auto-play if running
-    if (autoPlayInterval) {
-      clearInterval(autoPlayInterval);
-      autoPlayInterval = null;
-    }
+    timerWorker.postMessage({ command: 'stop' });
 
     return true;
   },
@@ -301,7 +293,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
     if (!state.isAssembled || state.isFinished || state.waitingForInput) {
       if (state.isPlaying) {
         set({ isPlaying: false });
-        if (autoPlayInterval) { clearInterval(autoPlayInterval); autoPlayInterval = null; }
+        timerWorker.postMessage({ command: 'stop' });
       }
       return;
     }
@@ -336,7 +328,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
       pendingSyscallV0 = engine.getRegisters()[2]; // $v0
       // Pause auto-play
       if (state.isPlaying) {
-        if (autoPlayInterval) { clearInterval(autoPlayInterval); autoPlayInterval = null; }
+        timerWorker.postMessage({ command: 'stop' });
       }
     }
 
@@ -345,21 +337,23 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
       const line = snap.pipeline.IF.instruction.line;
       if (state.breakpoints.has(line)) {
         set({ isPlaying: false });
-        if (autoPlayInterval) { clearInterval(autoPlayInterval); autoPlayInterval = null; }
+        timerWorker.postMessage({ command: 'stop' });
       }
     }
 
     // Check if finished
     if (snap.finished && state.isPlaying) {
       set({ isPlaying: false });
-      if (autoPlayInterval) { clearInterval(autoPlayInterval); autoPlayInterval = null; }
+      timerWorker.postMessage({ command: 'stop' });
+    }
+
+    if (snap.finished && snap.terminationReason === 'max_cycles_reached') {
+      newConsoleOutput.push(`\n[Program terminated: Maximum cycle limit (${engine.maxCycles}) reached. Possible infinite loop.]`);
     }
 
     set({
       cycle: snap.cycle,
       pc: snap.pc,
-      registers: registersToRecord(snap.registers),
-      memory: new Map(snap.memory),
       pipeline: snapshotToPipelineState(snap.pipeline),
       isFinished: snap.finished,
       stats: computeStats(snap.stats),
@@ -370,7 +364,6 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
       consoleOutput: newConsoleOutput,
       waitingForInput,
       pendingSyscallV0,
-      cycleHistory: [...engine.cycleHistory],
     });
   },
 
@@ -381,8 +374,6 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
     set({
       cycle: snap.cycle,
       pc: snap.pc,
-      registers: registersToRecord(snap.registers),
-      memory: new Map(snap.memory),
       pipeline: snapshotToPipelineState(snap.pipeline),
       isFinished: snap.finished,
       stats: computeStats(snap.stats),
@@ -390,7 +381,6 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
       readRegs: new Set(),
       modifiedAddresses: new Set(),
       currentPCLine: snap.pipeline.IF.instruction?.line ?? -1,
-      cycleHistory: [...engine.cycleHistory],
     });
   },
 
@@ -405,21 +395,13 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
 
     if (state.isPlaying) {
       // Stop
-      if (autoPlayInterval) { clearInterval(autoPlayInterval); autoPlayInterval = null; }
+      timerWorker.postMessage({ command: 'stop' });
       set({ isPlaying: false });
     } else {
       // Start
       if (state.isFinished || state.waitingForInput) return;
       set({ isPlaying: true });
-      autoPlayInterval = setInterval(() => {
-        const s = get();
-        if (s.isFinished || !s.isPlaying || s.waitingForInput) {
-          if (autoPlayInterval) { clearInterval(autoPlayInterval); autoPlayInterval = null; }
-          set({ isPlaying: false });
-          return;
-        }
-        s.nextCycle();
-      }, state.speed);
+      timerWorker.postMessage({ command: 'start', interval: state.speed });
     }
   },
 
@@ -435,7 +417,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
   },
 
   reset: () => {
-    if (autoPlayInterval) { clearInterval(autoPlayInterval); autoPlayInterval = null; }
+    timerWorker.postMessage({ command: 'stop' });
     const state = get();
     if (state.isAssembled && state.instructions.length > 0) {
       engine.loadProgram(state.instructions);
@@ -446,8 +428,6 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
       set({
         cycle: 0,
         pc: snap.pc,
-        registers: registersToRecord(snap.registers),
-        memory: new Map(snap.memory),
         pipeline: EMPTY_PIPELINE,
         isFinished: false,
         isPlaying: false,
@@ -459,13 +439,10 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
         consoleOutput: [],
         waitingForInput: false,
         pendingSyscallV0: 0,
-        cycleHistory: [],
       });
     } else {
       set({
         cycle: 0, pc: 0,
-        registers: registersToRecord(new Int32Array(32)),
-        memory: new Map(),
         pipeline: EMPTY_PIPELINE,
         isFinished: false, isPlaying: false,
         stats: EMPTY_STATS,
@@ -475,7 +452,6 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
         consoleOutput: [],
         waitingForInput: false,
         pendingSyscallV0: 0,
-        cycleHistory: [],
       });
     }
   },
@@ -495,17 +471,8 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
   setSpeed: (speed) => {
     set({ speed });
     // Restart interval if playing
-    if (get().isPlaying && autoPlayInterval) {
-      clearInterval(autoPlayInterval);
-      autoPlayInterval = setInterval(() => {
-        const s = get();
-        if (s.isFinished || !s.isPlaying || s.waitingForInput) {
-          if (autoPlayInterval) { clearInterval(autoPlayInterval); autoPlayInterval = null; }
-          set({ isPlaying: false });
-          return;
-        }
-        s.nextCycle();
-      }, speed);
+    if (get().isPlaying) {
+      timerWorker.postMessage({ command: 'start', interval: speed });
     }
   },
 
@@ -514,6 +481,16 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
   submitConsoleInput: (input: string) => {
     const state = get();
     if (!state.waitingForInput) return;
+
+    if (state.pendingSyscallV0 === SYSCALL.READ_INT) {
+      const parsed = parseInt(input.trim(), 10);
+      if (isNaN(parsed)) {
+        set({
+          consoleOutput: [...state.consoleOutput, `> ${input}`, `Error: Invalid integer input. Please try again.`],
+        });
+        return;
+      }
+    }
 
     const registers = engine.getRegisters();
     const memory = engine.getMemory();
@@ -537,21 +514,12 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
     set({
       waitingForInput: false,
       pendingSyscallV0: 0,
-      registers: registersToRecord(registers),
       consoleOutput: newConsoleOutput,
     });
 
     // Resume auto-play if it was running
     if (state.isPlaying) {
-      autoPlayInterval = setInterval(() => {
-        const s = get();
-        if (s.isFinished || !s.isPlaying || s.waitingForInput) {
-          if (autoPlayInterval) { clearInterval(autoPlayInterval); autoPlayInterval = null; }
-          set({ isPlaying: false });
-          return;
-        }
-        s.nextCycle();
-      }, state.speed);
+      timerWorker.postMessage({ command: 'start', interval: state.speed });
     }
   },
 

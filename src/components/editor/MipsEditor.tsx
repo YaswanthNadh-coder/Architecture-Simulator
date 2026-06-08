@@ -157,7 +157,7 @@ const handleEditorMount: OnMount = (_editor, monaco) => {
 
   // ── Autocompletion ──────────────────────────────────────────────
   monaco.languages.registerCompletionItemProvider('mips', {
-    provideCompletionItems: (model, position) => {
+    provideCompletionItems: (model: any, position: any) => {
       const word = model.getWordUntilPosition(position);
       const range = {
         startLineNumber: position.lineNumber,
@@ -210,7 +210,7 @@ const handleEditorMount: OnMount = (_editor, monaco) => {
 
   // ── Hover Documentation ─────────────────────────────────────────
   monaco.languages.registerHoverProvider('mips', {
-    provideHover: (model, position) => {
+    provideHover: (model: any, position: any) => {
       const word = model.getWordAtPosition(position);
       if (!word) return null;
 

@@ -1,4 +1,4 @@
-import { ExternalLink, AlertTriangle, Zap, Cpu, BookOpen, TerminalSquare } from 'lucide-react';
+import { ExternalLink, AlertTriangle, Zap, Cpu, BookOpen } from 'lucide-react';
 import { useSimulatorStore } from '../../store/simulatorStore';
 import { ISAReference } from './ISAReference';
 import { useState } from 'react';

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSimulatorStore } from '../../store/simulatorStore';
 import { assemble } from '../../engine/mipsParser';
 import { MIPSPipelineEngine } from '../../engine/pipelineEngine';
-import { AlertTriangle, CheckCircle2, FastForward, Play, Pause } from 'lucide-react';
+import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export const DiffView = () => {
@@ -40,31 +40,33 @@ export const DiffView = () => {
 
         // Run with Forwarding ON
         const engineOn = new MIPSPipelineEngine();
-        engineOn.setForwarding(true);
-        engineOn.loadProgram(result.instructions, result.dataSegment);
+        engineOn.forwardingEnabled = true;
+        engineOn.loadProgram(result.instructions);
+        engineOn.loadDataSegment(result.dataSegment);
         let onTotal = 0, onStalls = 0, onInstrs = 0;
         let onFinished = false;
         for (let i = 0; i < 1000; i++) {
           engineOn.step();
           onTotal++;
-          if (engineOn.getPipeline().ID.status === 'stall') onStalls++;
+          if (engineOn.getSnapshot().pipeline.ID.status === 'stall') onStalls++;
           if (engineOn.isFinished()) { onFinished = true; break; }
         }
-        onInstrs = engineOn.getStats().instructionsCompleted;
+        onInstrs = engineOn.getSnapshot().stats.instructionsCompleted;
 
         // Run with Forwarding OFF
         const engineOff = new MIPSPipelineEngine();
-        engineOff.setForwarding(false);
-        engineOff.loadProgram(result.instructions, result.dataSegment);
+        engineOff.forwardingEnabled = false;
+        engineOff.loadProgram(result.instructions);
+        engineOff.loadDataSegment(result.dataSegment);
         let offTotal = 0, offStalls = 0, offInstrs = 0;
         let offFinished = false;
         for (let i = 0; i < 1000; i++) {
           engineOff.step();
           offTotal++;
-          if (engineOff.getPipeline().ID.status === 'stall') offStalls++;
+          if (engineOff.getSnapshot().pipeline.ID.status === 'stall') offStalls++;
           if (engineOff.isFinished()) { offFinished = true; break; }
         }
-        offInstrs = engineOff.getStats().instructionsCompleted;
+        offInstrs = engineOff.getSnapshot().stats.instructionsCompleted;
 
         if (!onFinished || !offFinished) {
           setError('Program took too long to execute (infinite loop or awaiting input). Cannot compare performance.');

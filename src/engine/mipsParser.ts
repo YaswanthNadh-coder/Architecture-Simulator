@@ -43,7 +43,7 @@ export interface ParseResult {
 
 // ── Constants ────────────────────────────────────────────────────────────
 
-const TEXT_BASE = 0x00400000;
+// const TEXT_BASE = 0x00400000;
 const DATA_BASE = 0x10010000;
 
 // ── Register Mapping ─────────────────────────────────────────────────────
@@ -268,7 +268,7 @@ function parseDataSection(lines: { text: string; line: number }[]): DataParseRes
         const values = argStr.split(',').map(s => s.trim()).filter(Boolean);
         for (const vs of values) {
           const val = parseNumber(vs);
-          if (val === null) {
+          if (val === null || val < -32768 || val > 65535) {
             errors.push({ line, message: `Invalid .half value: '${vs}'`, severity: 'error' });
           } else {
             dataSegment.set(address, (val >> 8) & 0xFF);
@@ -525,7 +525,7 @@ export function assemble(code: string, options?: AssembleOptions): ParseResult {
   const blockedSet = new Set(options?.blockedInstructions?.map(s => s.toLowerCase()) ?? []);
 
   // Step 1: Split into lines, strip comments
-  const sourceLines = code.split('\n');
+  const sourceLines = code.split(/\r?\n/);
   const allLines: RawLine[] = [];
   for (let i = 0; i < sourceLines.length; i++) {
     const stripped = sourceLines[i].replace(/#.*$/, '').trim();
@@ -540,7 +540,7 @@ export function assemble(code: string, options?: AssembleOptions): ParseResult {
   let currentSection: 'text' | 'data' = 'text'; // Default to text if no directive
 
   for (const rawLine of allLines) {
-    const lower = rawLine.text.trim().toLowerCase();
+
     // Check for label: .data or label: .text patterns
     const withoutLabel = rawLine.text.replace(/^\w+:\s*/, '').trim().toLowerCase();
 

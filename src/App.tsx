@@ -15,6 +15,7 @@ import { FilesPage } from './components/files/FilesPage';
 import { ActivityPage } from './components/activity/ActivityPage';
 import { SettingsPage } from './components/settings/SettingsPage';
 import { PricingPage } from './components/pricing/PricingPage';
+import { AnalyticsPage } from './components/analytics/AnalyticsPage';
 
 function App() {
   const { initialize } = useAuthStore();
@@ -37,6 +38,7 @@ function App() {
         <Route path="/files" element={<FilesPage />} />
         <Route path="/activity" element={<ActivityPage />} />
         <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/analytics" element={<AnalyticsPage />} />
       </Route>
 
       {/* Fallback */}
