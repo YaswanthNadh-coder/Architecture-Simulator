@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { useWorkspaceStore, type ActivityEvent } from '../../store/workspaceStore';
-import { Users, X, Send, UserPlus, Clock, Play, Edit3 } from 'lucide-react';
+import { useWorkspaceStore } from '../../store/workspaceStore';
+import { Users, X, Send, UserPlus, Play, Edit3 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export const WorkspacePanel = () => {

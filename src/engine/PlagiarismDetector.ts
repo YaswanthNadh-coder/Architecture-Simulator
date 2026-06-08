@@ -67,7 +67,7 @@ export class PlagiarismDetector {
    */
   private static extractOpcodes(code: string): string[] {
     const result = assemble(code);
-    return result.instructions.map(inst => inst.opcode.toLowerCase());
+    return result.instructions.map(inst => inst.op.toLowerCase());
   }
 
   /**

@@ -5,15 +5,16 @@ import { Search, ChevronDown } from 'lucide-react';
 type DisplayFormat = 'hex' | 'decimal' | 'binary' | 'ascii';
 
 export const MemoryView = () => {
-  const { memory, modifiedAddresses, dataLabels, registers } = useSimulatorStore();
+  const { modifiedAddresses, dataLabels, getEngine } = useSimulatorStore();
+  const memory = getEngine().getMemory();
+  const registers = getEngine().getRegisters();
   const [addressInput, setAddressInput] = useState('');
   const [baseAddress, setBaseAddress] = useState(0x10010000); // .data segment default
   const [format, setFormat] = useState<DisplayFormat>('hex');
   const [showFormatMenu, setShowFormatMenu] = useState(false);
 
-  // Get SP value from register display
-  const spHex = registers['$sp'] || '0x7FFFFFFC';
-  const spValue = parseInt(spHex, 16);
+  // Get SP value from register array (index 29)
+  const spValue = registers[29] >>> 0;
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();

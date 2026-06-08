@@ -41,7 +41,7 @@ interface InstructionTimeline {
   entries: Map<number, TimingEntry>; // cycle → { stage, status }
 }
 
-function buildTimingGrid(cycleHistory: typeof useSimulatorStore.prototype.cycleHistory): {
+function buildTimingGrid(cycleHistory: ReturnType<typeof useSimulatorStore.prototype.getEngine>['cycleHistory']): {
   timelines: InstructionTimeline[];
   maxCycle: number;
 } {
@@ -81,7 +81,8 @@ function buildTimingGrid(cycleHistory: typeof useSimulatorStore.prototype.cycleH
 }
 
 export const TimingView = () => {
-  const { cycleHistory, cycle, instructions } = useSimulatorStore();
+  const { cycle, instructions, getEngine } = useSimulatorStore();
+  const cycleHistory = getEngine().cycleHistory;
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const currentCycleRef = useRef<HTMLDivElement>(null);
 

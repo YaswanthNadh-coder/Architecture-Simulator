@@ -69,17 +69,16 @@ export class AutoGrader {
 
     // 3. Compute Metrics (Run once more without input constraints for raw metrics)
     const engine = new MIPSPipelineEngine();
-    engine.setForwarding(useForwarding);
-    engine.loadProgram(assemblyResult.instructions, assemblyResult.dataSegment);
-    let cycles = 0;
-    while (!engine.isFinished() && cycles < 10000) {
+    engine.forwardingEnabled = useForwarding;
+    engine.loadProgram(assemblyResult.instructions);
+    engine.loadDataSegment(assemblyResult.dataSegment);
+    while (!engine.isFinished()) {
       engine.step();
-      cycles++;
     }
-    const stats = engine.getStats();
+    const stats = engine.getSnapshot().stats;
     report.cycles = stats.totalCycles;
     report.stalls = stats.stallCycles;
-    report.cpi = stats.cpi;
+    report.cpi = stats.totalCycles / Math.max(1, stats.instructionsCompleted);
 
     // 4. Calculate Final Grade
     // Correctness
@@ -87,11 +86,6 @@ export class AutoGrader {
     let finalScore = correctnessPct * assignment.rubric.correctness;
 
     // Efficiency
-    // If efficiency is part of the rubric, check if it met the maxStalls/maxCycles globally
-    // We'll simplify: if all efficiency-focused test cases passed, give full efficiency score.
-    // Or we just give efficiency based on stall percentage. For now, if correctness is 100%, 
-    // efficiency points are awarded if stalls are within global limits (if any), but we rely on test cases.
-    
     // For simplicity, if the student passes all tests (including efficiency tests), they get full rubric points.
     if (correctnessPct === 1) {
       finalScore += assignment.rubric.efficiency;
@@ -109,22 +103,20 @@ export class AutoGrader {
     useForwarding: boolean
   ): TestCaseResult {
     const engine = new MIPSPipelineEngine();
-    engine.setForwarding(useForwarding);
-    engine.loadProgram(assemblyResult.instructions, assemblyResult.dataSegment);
+    engine.forwardingEnabled = useForwarding;
+    engine.loadProgram(assemblyResult.instructions);
+    engine.loadDataSegment(assemblyResult.dataSegment);
 
     // Apply inputs
     if (tc.input?.registers) {
       for (const [reg, val] of Object.entries(tc.input.registers)) {
-        engine.getRegisters()[reg] = val;
+        const regIndex = parseInt(reg.replace('$', ''));
+        engine.getRegisters()[regIndex] = val;
       }
     }
     if (tc.input?.memory) {
       for (const [addr, val] of Object.entries(tc.input.memory)) {
-        // Store as word for simplicity in headless setup
-        engine.getMemory().set(addr, (val >> 24) & 0xFF);
-        engine.getMemory().set(addr + 1, (val >> 16) & 0xFF);
-        engine.getMemory().set(addr + 2, (val >> 8) & 0xFF);
-        engine.getMemory().set(addr + 3, val & 0xFF);
+        engine.getMemory().set(Number(addr), val);
       }
     }
 
@@ -132,11 +124,6 @@ export class AutoGrader {
     let cycles = 0;
     const MAX_CYCLES = 10000;
     while (!engine.isFinished() && cycles < MAX_CYCLES) {
-      // Mock console input if needed
-      if (engine.isWaitingForInput()) {
-        const inputStr = tc.input?.console?.shift() || '0';
-        engine.provideInput(inputStr);
-      }
       engine.step();
       cycles++;
     }
@@ -149,14 +136,14 @@ export class AutoGrader {
       feedback.push(`Execution timeout (${MAX_CYCLES} cycles). Infinite loop?`);
     }
 
-    const stats = engine.getStats();
+    const stats = engine.getSnapshot().stats;
 
     // Check outputs
     if (tc.expected.registers) {
       const regs = engine.getRegisters();
       for (const [reg, expVal] of Object.entries(tc.expected.registers)) {
-        // Convert to signed 32-bit for comparison
-        const actualVal = regs[reg] | 0;
+        const regIndex = parseInt(reg.replace('$', ''));
+        const actualVal = regs[regIndex] | 0;
         if (actualVal !== expVal) {
           passed = false;
           feedback.push(`Register ${reg}: expected ${expVal}, got ${actualVal}`);
