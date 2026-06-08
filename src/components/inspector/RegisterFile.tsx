@@ -1,9 +1,10 @@
 import { motion } from 'framer-motion';
 import { useSimulatorStore } from '../../store/simulatorStore';
+import { REG_NAMES } from '../../engine/mipsParser';
 
 export const RegisterFile = () => {
-  const { registers, cycle, modifiedRegs, readRegs } = useSimulatorStore();
-  const registerEntries = Object.entries(registers);
+  const { cycle, modifiedRegs, readRegs, getEngine } = useSimulatorStore();
+  const registers = getEngine().getRegisters();
 
   return (
     <div className="h-full bg-bg-panel border-t border-border-subtle flex flex-col">
@@ -16,7 +17,9 @@ export const RegisterFile = () => {
 
       <div className="flex-1 overflow-auto p-3">
         <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))' }}>
-          {registerEntries.map(([name, val], index) => {
+          {Array.from(registers).slice(0, 32).map((val, index) => {
+            const name = REG_NAMES[index];
+            const hexValue = '0x' + ((val >>> 0).toString(16)).toUpperCase().padStart(8, '0');
             const isHighlighted = readRegs.has(index); // Read this cycle
             const isModified    = modifiedRegs.has(index); // Written this cycle
 
@@ -45,7 +48,7 @@ export const RegisterFile = () => {
                 className={`flex flex-col font-mono rounded-lg border px-2 py-1.5 transition-colors duration-300 ${highlightClass}`}
               >
                 <span className={`text-[10px] font-bold leading-none mb-0.5 ${nameColor}`}>{name}</span>
-                <span className={`text-[10px] leading-tight truncate ${valColor}`}>{val}</span>
+                <span className={`text-[10px] leading-tight truncate ${valColor}`}>{hexValue}</span>
               </motion.div>
             );
           })}

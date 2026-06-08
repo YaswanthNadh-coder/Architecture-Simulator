@@ -1,9 +1,14 @@
-import { Play, BookOpen, Clock } from 'lucide-react';
+import { Play, BookOpen, Clock, BarChart3, Sparkles, Lock } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
+import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { useNavigate } from 'react-router-dom';
+import { FeatureGate } from '../monetization/FeatureGate';
+import { AnalyticsDashboard } from '../analytics/AnalyticsDashboard';
+import { ConceptMastery } from '../analytics/ConceptMastery';
 
 export const DashboardPage = () => {
   const { profile } = useAuthStore();
+  const { tier, canAccess } = useSubscriptionStore();
   const navigate = useNavigate();
 
   const hour = new Date().getHours();
@@ -19,14 +24,24 @@ export const DashboardPage = () => {
           <div className="relative z-10">
             <h1 className="text-3xl font-bold text-white mb-2">{greeting}, {profile?.full_name?.split(' ')[0] || 'Architect'} 👋</h1>
             <p className="text-brand-100/80 mb-6 max-w-lg">Ready to simulate some pipelines? You have 2 assignments due this week in CS301.</p>
-            <button onClick={() => navigate('/simulator')} className="bg-brand-500 text-white px-5 py-2.5 rounded-xl font-semibold shadow-lg shadow-brand-500/25 flex items-center gap-2 hover:bg-brand-400 transition-colors">
-              <Play size={16} fill="currentColor" /> Resume Last Simulation
-            </button>
+            <div className="flex items-center gap-3">
+              <button onClick={() => navigate('/simulator')} className="bg-brand-500 text-white px-5 py-2.5 rounded-xl font-semibold shadow-lg shadow-brand-500/25 flex items-center gap-2 hover:bg-brand-400 transition-colors">
+                <Play size={16} fill="currentColor" /> Resume Last Simulation
+              </button>
+              {tier === 'free' && (
+                <button
+                  onClick={() => navigate('/pricing')}
+                  className="bg-white/5 text-brand-400 px-5 py-2.5 rounded-xl font-semibold border border-brand-500/20 flex items-center gap-2 hover:bg-white/10 transition-colors"
+                >
+                  <Sparkles size={16} /> Try Pro Free
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Grid */}
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="grid md:grid-cols-2 gap-6 mb-8">
           {/* Active Courses */}
           <section>
             <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
@@ -59,6 +74,32 @@ export const DashboardPage = () => {
             </div>
           </section>
         </div>
+
+        {/* Analytics Preview */}
+        <section className="mb-8">
+          <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+            <BarChart3 size={18} className="text-brand-400" /> Performance Analytics
+            {!canAccess('analyticsDashboard') && (
+              <span className="text-[9px] px-2 py-0.5 rounded-full bg-brand-500/10 text-brand-400 border border-brand-500/20 font-bold uppercase tracking-wider flex items-center gap-1">
+                <Lock size={8} /> Pro
+              </span>
+            )}
+          </h2>
+
+          <FeatureGate feature="analyticsDashboard" overlay>
+            <AnalyticsDashboard />
+          </FeatureGate>
+        </section>
+
+        {/* Concept Mastery Preview */}
+        {canAccess('conceptMastery') && (
+          <section>
+            <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+              <BookOpen size={18} className="text-cyan-400" /> Concept Mastery
+            </h2>
+            <ConceptMastery />
+          </section>
+        )}
       </div>
     </div>
   );

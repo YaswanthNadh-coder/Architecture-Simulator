@@ -1,6 +1,8 @@
 import { useState, useCallback } from 'react';
-import { FileCode2, Plus, Clock, Trash2, FolderOpen } from 'lucide-react';
+import { FileCode2, Plus, Clock, Trash2, FolderOpen, Lock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useSubscriptionStore } from '../../store/subscriptionStore';
+import { ProgramLimitGate } from '../monetization/ProgramLimitGate';
 
 const STORAGE_KEY = 'archsim_projects';
 
@@ -39,8 +41,9 @@ export const FilesPage = () => {
   const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>(getProjects);
   const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const { capabilities } = useSubscriptionStore();
 
-  const createProject = useCallback(() => {
+  const doCreateProject = useCallback(() => {
     const name = prompt('Project name:', `Untitled Project ${projects.length + 1}`);
     if (!name) return;
     const newProject: Project = {
@@ -77,20 +80,58 @@ export const FilesPage = () => {
     } catch { return 'Unknown'; }
   };
 
+  const maxPrograms = capabilities.maxPrograms;
+  const isLimited = maxPrograms !== -1;
+  const atLimit = isLimited && projects.length >= maxPrograms;
+  const nearLimit = isLimited && projects.length >= maxPrograms - 2 && !atLimit;
+
   return (
     <div className="flex-1 overflow-auto bg-bg-base p-8" onClick={() => setContextMenu(null)}>
       <div className="max-w-5xl mx-auto">
         <div className="flex items-center justify-between mb-8">
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <FileCode2 className="text-brand-500" /> Projects
-          </h1>
-          <button
-            onClick={createProject}
-            className="flex items-center gap-2 bg-brand-500 hover:bg-brand-400 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-colors shadow-lg shadow-brand-500/20"
-          >
-            <Plus size={16} /> New Project
-          </button>
+          <div className="flex items-center gap-4">
+            <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+              <FileCode2 className="text-brand-500" /> Projects
+            </h1>
+            {isLimited && (
+              <span className={`text-xs font-mono px-2 py-1 rounded-lg border ${
+                atLimit
+                  ? 'bg-hazard/10 border-hazard/30 text-hazard'
+                  : nearLimit
+                    ? 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400'
+                    : 'bg-bg-panel border-border-subtle text-text-muted'
+              }`}>
+                {projects.length} / {maxPrograms} programs
+              </span>
+            )}
+          </div>
+
+          <ProgramLimitGate currentCount={projects.length} onAllow={doCreateProject}>
+            {(handleCreate) => (
+              <button
+                onClick={handleCreate}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-colors shadow-lg ${
+                  atLimit
+                    ? 'bg-white/5 text-text-muted border border-border-subtle hover:bg-white/10'
+                    : 'bg-brand-500 hover:bg-brand-400 text-white shadow-brand-500/20'
+                }`}
+              >
+                {atLimit ? <Lock size={14} /> : <Plus size={16} />}
+                {atLimit ? 'Upgrade for More' : 'New Project'}
+              </button>
+            )}
+          </ProgramLimitGate>
         </div>
+
+        {/* Near-limit warning */}
+        {nearLimit && (
+          <div className="mb-6 px-4 py-3 rounded-xl bg-yellow-500/5 border border-yellow-500/20 flex items-center gap-3">
+            <span className="text-yellow-400 text-xs">⚡</span>
+            <p className="text-xs text-yellow-400/80">
+              You're approaching your Free plan limit. <a href="/pricing" className="underline font-semibold text-yellow-400">Upgrade to Pro</a> for unlimited projects.
+            </p>
+          </div>
+        )}
 
         {projects.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-center">
@@ -99,12 +140,16 @@ export const FilesPage = () => {
             </div>
             <h2 className="text-xl font-bold text-white mb-2">No projects yet</h2>
             <p className="text-text-muted text-sm mb-6 max-w-sm">Create your first MIPS assembly project to get started with the pipeline simulator.</p>
-            <button
-              onClick={createProject}
-              className="flex items-center gap-2 bg-brand-500 hover:bg-brand-400 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors shadow-lg shadow-brand-500/20"
-            >
-              <Plus size={16} /> Create First Project
-            </button>
+            <ProgramLimitGate currentCount={projects.length} onAllow={doCreateProject}>
+              {(handleCreate) => (
+                <button
+                  onClick={handleCreate}
+                  className="flex items-center gap-2 bg-brand-500 hover:bg-brand-400 text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-colors shadow-lg shadow-brand-500/20"
+                >
+                  <Plus size={16} /> Create First Project
+                </button>
+              )}
+            </ProgramLimitGate>
           </div>
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -134,7 +179,7 @@ export const FilesPage = () => {
                 
                 <div className="flex items-center gap-3">
                   <span className="text-xs font-mono bg-bg-panel px-2 py-1 rounded border border-border-subtle text-text-main">
-                    {proj.code.split('\n').length} lines
+                    {proj.code.split(/\r?\n/).length} lines
                   </span>
                 </div>
               </div>
