@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Settings, Cpu, X, HelpCircle } from 'lucide-react';
+import { Settings, Cpu, X, HelpCircle, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSimulatorStore } from '../../store/simulatorStore';
+import { generateReport } from '../../lib/reportGenerator';
 
 export const ArchitectureSettingsPanel = () => {
   const { 
@@ -218,6 +219,26 @@ export const ArchitectureSettingsPanel = () => {
                       </div>
                     </div>
                   )}
+                </div>
+
+                {/* Report Generation */}
+                <div className="pt-6 border-t border-border-subtle pb-6">
+                  <button
+                    onClick={() => {
+                      try {
+                        generateReport();
+                      } catch (e) {
+                        alert('Failed to generate report. Make sure you run the simulator first.');
+                      }
+                    }}
+                    className="w-full py-3 px-4 bg-brand-500 hover:bg-brand-400 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-colors shadow-lg shadow-brand-500/20"
+                  >
+                    <Download size={18} />
+                    Download PDF Report
+                  </button>
+                  <p className="text-center text-[10px] text-text-muted mt-3">
+                    Exports cycle stats, cache metrics, final register state, and source code.
+                  </p>
                 </div>
 
               </div>
