@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { assemble, type ParsedInstruction, type ParseError } from '../engine/mipsParser';
 import { MIPSPipelineEngine, type PipelineSnapshot, type EngineStats } from '../engine/pipelineEngine';
 import { completeSyscallInput, SYSCALL } from '../engine/syscallHandler';
+import type { CacheConfig } from '../engine/cacheSimulator';
 
 // ── Re-export types for UI compatibility ─────────────────────────────────
 
@@ -61,6 +62,7 @@ interface SimulatorStore {
   forwardingEnabled: boolean;
   branchPrediction: 'not-taken' | 'always-taken';
   memoryLatency: number;
+  cacheConfig: CacheConfig;
   speed: number;
   breakpoints: Set<number>;
 
@@ -95,6 +97,7 @@ interface SimulatorStore {
   toggleForwarding: () => void;
   setBranchPrediction: (strategy: 'not-taken' | 'always-taken') => void;
   setMemoryLatency: (latency: number) => void;
+  setCacheConfig: (config: CacheConfig) => void;
   reset: () => void;
   setBreakpoint: (line: number) => void;
   removeBreakpoint: (line: number) => void;
@@ -223,6 +226,13 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
   forwardingEnabled: true,
   branchPrediction: 'not-taken',
   memoryLatency: 0,
+  cacheConfig: {
+    enabled: false,
+    cacheSize: 256,
+    blockSize: 16,
+    associativity: 1,
+    missPenalty: 10,
+  },
   speed: 800,
   breakpoints: new Set(),
 
@@ -244,7 +254,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
   setCode: (code) => set({ code, isAssembled: false }),
 
   assemble: () => {
-    const { code, forwardingEnabled, branchPrediction, memoryLatency, blockedInstructions } = get();
+    const { code, forwardingEnabled, branchPrediction, memoryLatency, cacheConfig, blockedInstructions } = get();
     const result = assemble(code, {
       blockedInstructions: blockedInstructions.length > 0 ? blockedInstructions : undefined,
     });
@@ -263,6 +273,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
     engine.forwardingEnabled = forwardingEnabled;
     engine.branchPrediction = branchPrediction;
     engine.memoryLatency = memoryLatency;
+    engine.cache.updateConfig(cacheConfig);
     engine.loadProgram(result.instructions);
     engine.loadDataSegment(result.dataSegment);
 
@@ -433,6 +444,12 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
   setMemoryLatency: (latency) => {
     engine.memoryLatency = latency;
     set({ memoryLatency: latency });
+    if (get().isAssembled) get().assemble();
+  },
+
+  setCacheConfig: (config) => {
+    engine.cache.updateConfig(config);
+    set({ cacheConfig: config });
     if (get().isAssembled) get().assemble();
   },
 

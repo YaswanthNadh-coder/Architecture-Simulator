@@ -7,7 +7,8 @@ export const ArchitectureSettingsPanel = () => {
   const { 
     forwardingEnabled, toggleForwarding,
     branchPrediction, setBranchPrediction,
-    memoryLatency, setMemoryLatency
+    memoryLatency, setMemoryLatency,
+    cacheConfig, setCacheConfig
   } = useSimulatorStore();
   
   const [isOpen, setIsOpen] = useState(false);
@@ -140,6 +141,83 @@ export const ArchitectureSettingsPanel = () => {
                     <span>0 (Ideal)</span>
                     <span>10 (Slow)</span>
                   </div>
+                </div>
+
+                {/* Cache Configuration */}
+                <div className="space-y-4 pt-6 border-t border-border-subtle">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h3 className="text-sm font-bold text-white mb-1">L1 Cache Simulator</h3>
+                      <p className="text-xs text-text-muted pr-4">
+                        Simulate memory hierarchy with a configurable L1 Data Cache.
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
+                      <input 
+                        type="checkbox" 
+                        className="sr-only peer"
+                        checked={cacheConfig.enabled}
+                        onChange={(e) => setCacheConfig({ ...cacheConfig, enabled: e.target.checked })}
+                      />
+                      <div className="w-9 h-5 bg-bg-panel peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-text-muted peer-checked:after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500 border border-border-subtle"></div>
+                    </label>
+                  </div>
+
+                  {cacheConfig.enabled && (
+                    <div className="space-y-3 bg-bg-panel p-4 rounded-xl border border-border-subtle">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-text-muted">Cache Size (Bytes)</span>
+                        <select 
+                          value={cacheConfig.cacheSize}
+                          onChange={(e) => setCacheConfig({ ...cacheConfig, cacheSize: parseInt(e.target.value, 10) })}
+                          className="bg-bg-base border border-border-subtle text-white text-xs rounded-lg px-2 py-1 outline-none"
+                        >
+                          <option value="64">64 B</option>
+                          <option value="128">128 B</option>
+                          <option value="256">256 B</option>
+                          <option value="512">512 B</option>
+                        </select>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-text-muted">Block Size (Bytes)</span>
+                        <select 
+                          value={cacheConfig.blockSize}
+                          onChange={(e) => setCacheConfig({ ...cacheConfig, blockSize: parseInt(e.target.value, 10) })}
+                          className="bg-bg-base border border-border-subtle text-white text-xs rounded-lg px-2 py-1 outline-none"
+                        >
+                          <option value="4">4 B (1 word)</option>
+                          <option value="8">8 B (2 words)</option>
+                          <option value="16">16 B (4 words)</option>
+                        </select>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-text-muted">Associativity</span>
+                        <select 
+                          value={cacheConfig.associativity}
+                          onChange={(e) => setCacheConfig({ ...cacheConfig, associativity: parseInt(e.target.value, 10) })}
+                          className="bg-bg-base border border-border-subtle text-white text-xs rounded-lg px-2 py-1 outline-none"
+                        >
+                          <option value="1">Direct Mapped</option>
+                          <option value="2">2-Way Set Assoc.</option>
+                          <option value="4">4-Way Set Assoc.</option>
+                        </select>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-text-muted">Miss Penalty (Cycles)</span>
+                        <input
+                          type="number"
+                          min="1"
+                          max="100"
+                          value={cacheConfig.missPenalty}
+                          onChange={(e) => setCacheConfig({ ...cacheConfig, missPenalty: parseInt(e.target.value, 10) || 10 })}
+                          className="w-16 bg-bg-base border border-border-subtle text-white text-xs rounded-lg px-2 py-1 outline-none text-right"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
 
               </div>

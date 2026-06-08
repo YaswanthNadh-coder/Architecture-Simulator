@@ -16,9 +16,10 @@ import { TimingView } from './TimingView';
 import { MemoryView } from './MemoryView';
 import { DiffView } from './DiffView';
 import { GradingView } from './GradingView';
+import { CacheView } from './CacheView';
 import { ArchitectureSettingsPanel } from '../settings/ArchitectureSettingsPanel';
 
-type TabView = 'Pipeline' | 'Datapath' | 'Timing' | 'Memory' | 'Diff' | 'Grading';
+type TabView = 'Pipeline' | 'Datapath' | 'Timing' | 'Memory' | 'Cache' | 'Diff' | 'Grading';
 
 const STORAGE_KEY = 'archsim_projects';
 
@@ -119,7 +120,7 @@ export const SimulatorPage = () => {
 
         {/* View tabs */}
         <nav className="flex items-center gap-1">
-          {(['Pipeline', 'Datapath', 'Timing', 'Memory', 'Diff', 'Grading'] as TabView[]).map((tab) => (
+          {(['Pipeline', 'Datapath', 'Timing', 'Memory', 'Cache', 'Diff', 'Grading'] as TabView[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -181,6 +182,7 @@ export const SimulatorPage = () => {
             {activeTab === 'Datapath' && <DatapathView />}
             {activeTab === 'Timing' && <TimingView />}
             {activeTab === 'Memory' && <MemoryView />}
+            {activeTab === 'Cache' && <CacheView />}
             {activeTab === 'Diff' && <DiffView />}
             {activeTab === 'Grading' && <GradingView />}
           </div>
