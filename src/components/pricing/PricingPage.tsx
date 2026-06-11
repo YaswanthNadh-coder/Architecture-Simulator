@@ -1,25 +1,38 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, ArrowRight, GraduationCap, HelpCircle, ChevronDown } from 'lucide-react';
+import { Check, ArrowRight, GraduationCap, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
-import { PRICING, TIER_DISPLAY, type TierName } from '../../lib/tierConfig';
-import { formatPrice, calculateAnnualSavings } from '../../lib/billingUtils';
+import { PRICING, TIER_DISPLAY } from '../../lib/tierConfig';
 import { PricingToggle } from './PricingToggle';
 import { FeatureComparisonTable } from './FeatureComparisonTable';
-import { PlanQuiz } from './PlanQuiz';
-import { CheckoutFlow } from './CheckoutFlow';
-import { InstitutionContactForm } from './InstitutionContactForm';
+
+/** Format cents to a display price string */
+function formatPrice(cents: number, showCents = true): string {
+  const dollars = cents / 100;
+  if (!showCents && dollars === Math.floor(dollars)) {
+    return `$${Math.floor(dollars)}`;
+  }
+  return `$${dollars.toFixed(2)}`;
+}
+
+/** Calculate savings between monthly and annual billing */
+function calculateAnnualSavings(isStudentDiscount: boolean) {
+  const monthly = isStudentDiscount ? PRICING.pro.studentMonthly : PRICING.pro.monthly;
+  const annual = isStudentDiscount ? PRICING.pro.studentAnnual : PRICING.pro.annual;
+  const yearlyAtMonthly = monthly * 12;
+  const savingsAmount = yearlyAtMonthly - annual;
+  const savingsPercent = Math.round((savingsAmount / yearlyAtMonthly) * 100);
+  return { savingsAmount, savingsPercent };
+}
 
 export const PricingPage = () => {
   const navigate = useNavigate();
   const { isAuthenticated, isEdu } = useAuthStore();
-  const { tier: currentTier } = useSubscriptionStore();
+  const { tier: currentTier, startTrial } = useSubscriptionStore();
+  const { user } = useAuthStore();
   const [isAnnual, setIsAnnual] = useState(true);
-  const [showQuiz, setShowQuiz] = useState(false);
-  const [showCheckout, setShowCheckout] = useState(false);
-  const [showContact, setShowContact] = useState<'institution' | 'enterprise' | null>(null);
 
   const savings = calculateAnnualSavings(isEdu);
 
@@ -29,12 +42,13 @@ export const PricingPage = () => {
 
   const proMonthlyEffective = isAnnual ? Math.round(proPrice / 12) : proPrice;
 
-  const handleQuizResult = (tier: TierName) => {
-    setShowQuiz(false);
-    if (tier === 'free') return;
-    if (tier === 'pro') setShowCheckout(true);
-    if (tier === 'institution') setShowContact('institution');
-    if (tier === 'enterprise') setShowContact('enterprise');
+  const handleStartTrial = async () => {
+    if (!isAuthenticated || !user) {
+      navigate('/register');
+      return;
+    }
+    await startTrial(user.id);
+    navigate('/');
   };
 
   return (
@@ -47,7 +61,7 @@ export const PricingPage = () => {
 
       <div className="max-w-7xl mx-auto relative z-10 px-6 py-20">
         {/* ── Header ─────────────────────────────────────────── */}
-        <div className="text-center max-w-2xl mx-auto mb-6">
+        <div className="text-center max-w-2xl mx-auto mb-10">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -61,21 +75,9 @@ export const PricingPage = () => {
               workflow.
             </h1>
             <p className="text-lg text-text-muted mb-2">
-              Whether you're learning on your own, enrolled in a course, or teaching a full cohort.
+              Whether you're learning on your own or enrolled in a course.
             </p>
           </motion.div>
-        </div>
-
-        {/* ── Quiz CTA ───────────────────────────────────────── */}
-        <div className="text-center mb-8">
-          <button
-            onClick={() => setShowQuiz(true)}
-            className="inline-flex items-center gap-2 text-sm text-brand-400 hover:text-brand-300 transition-colors group"
-          >
-            <HelpCircle size={14} />
-            Not sure which plan? Take our 30-second quiz
-            <ChevronDown size={14} className="group-hover:translate-y-0.5 transition-transform" />
-          </button>
         </div>
 
         {/* ── Toggle ─────────────────────────────────────────── */}
@@ -86,7 +88,7 @@ export const PricingPage = () => {
         />
 
         {/* ── Tier Cards ─────────────────────────────────────── */}
-        <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto items-start">
+        <div className="grid md:grid-cols-2 gap-8 max-w-3xl mx-auto items-start">
 
           {/* Free Tier */}
           <PlanCard
@@ -131,73 +133,24 @@ export const PricingPage = () => {
                 'Email support (48h SLA)',
               ]}
               cta={currentTier === 'pro' ? 'Current Plan' : 'Start Free Trial'}
-              onClick={() => setShowCheckout(true)}
+              onClick={handleStartTrial}
               current={currentTier === 'pro'}
               studentBadge={isEdu}
               subPrice={isAnnual ? `${formatPrice(proPrice, false)}/year total` : undefined}
               trialText="14-day free trial — no credit card"
             />
           </div>
-
-          {/* Institution Tier */}
-          <PlanCard
-            name="Institution"
-            price={formatPrice(PRICING.institution.perSeatPerSemester[0].price, false)}
-            interval="/student/semester"
-            description={TIER_DISPLAY.institution.description}
-            features={[
-              'All Pro features for every seat',
-              'Instructor console & course mgmt',
-              'Assignment builder & rubrics',
-              'Auto-grading engine',
-              'Plagiarism detection',
-              'LTI 1.3 / Canvas / Moodle',
-              'SAML SSO & SCIM provisioning',
-              'Cohort analytics & grade export',
-              'TA co-debugging sessions',
-              'Priority email support (24h)',
-            ]}
-            cta={currentTier === 'institution' ? 'Current Plan' : 'Start Free Pilot'}
-            onClick={() => setShowContact('institution')}
-            current={currentTier === 'institution'}
-            volumeNote="Volume discounts from 200+ seats"
-          />
-
-          {/* Enterprise Tier */}
-          <PlanCard
-            name="Enterprise"
-            price="Custom"
-            description={TIER_DISPLAY.enterprise.description}
-            features={[
-              'All Institution features',
-              'Private cloud deployment',
-              'Custom branding & curriculum',
-              'REST API access',
-              'Dedicated infrastructure',
-              '99.9% uptime SLA',
-              'Custom data retention',
-              'FERPA / HIPAA BAA',
-              'Dedicated account team',
-              'Custom MSA & DPA',
-            ]}
-            cta="Contact Sales"
-            onClick={() => setShowContact('enterprise')}
-            current={false}
-            enterpriseRange={`Typically ${formatPrice(PRICING.enterprise.typicalMin, false)}–${formatPrice(PRICING.enterprise.typicalMax, false)}/yr`}
-          />
         </div>
 
-        {/* ── Trusted by ─────────────────────────────────────── */}
+        {/* ── Designed for ───────────────────────────────────── */}
         <div className="text-center mt-16 mb-4">
           <p className="text-xs text-text-muted uppercase tracking-widest mb-4">Designed for</p>
           <div className="flex items-center justify-center gap-8 opacity-40">
-            <span className="text-sm font-semibold text-text-muted">CS Departments</span>
+            <span className="text-sm font-semibold text-text-muted">CS Students</span>
             <span className="text-border-subtle">•</span>
             <span className="text-sm font-semibold text-text-muted">Bootcamps</span>
             <span className="text-border-subtle">•</span>
             <span className="text-sm font-semibold text-text-muted">Self-Learners</span>
-            <span className="text-border-subtle">•</span>
-            <span className="text-sm font-semibold text-text-muted">Corporate Training</span>
           </div>
         </div>
 
@@ -217,43 +170,16 @@ export const PricingPage = () => {
               answer="If you register with a .edu email address, you automatically get Pro at $5/month instead of $9/month. No third-party verification required."
             />
             <FaqItem
-              question="How does Institution billing work?"
-              answer="Institution plans are billed per-seat per-semester. You purchase a block of seats upfront — no surprise invoices. Volume discounts start at 200 seats."
-            />
-            <FaqItem
-              question="Can I get a refund?"
-              answer="Pro monthly: 7-day satisfaction refund, no questions asked. Pro annual: 30-day satisfaction refund. Institution: refunds available before LTI integration is activated."
-            />
-            <FaqItem
               question="What happens to my data if I downgrade?"
               answer="Your data is retained for 30 days after downgrade. Programs beyond the Free tier's 10-program limit are not deleted — they become read-only until you upgrade again or remove extras."
             />
             <FaqItem
-              question="Do you offer a pilot program for universities?"
-              answer="Yes! Your first semester is free for up to 30 students with one instructor account. No procurement paperwork required to start."
+              question="Will you add more ISA support (ARM, RISC-V)?"
+              answer="Yes! RISC-V support is coming for Pro users. We're also planning ARM architecture support in a future release. Stay tuned!"
             />
           </div>
         </div>
       </div>
-
-      {/* ── Modals ───────────────────────────────────────────── */}
-      {showQuiz && (
-        <PlanQuiz onResult={handleQuizResult} onClose={() => setShowQuiz(false)} />
-      )}
-      {showCheckout && (
-        <CheckoutFlow
-          tier="pro"
-          defaultInterval={isAnnual ? 'annual' : 'monthly'}
-          onClose={() => setShowCheckout(false)}
-          onSuccess={() => { setShowCheckout(false); navigate('/'); }}
-        />
-      )}
-      {showContact && (
-        <InstitutionContactForm
-          type={showContact}
-          onClose={() => setShowContact(null)}
-        />
-      )}
     </div>
   );
 };
@@ -274,13 +200,11 @@ interface PlanCardProps {
   studentBadge?: boolean;
   subPrice?: string;
   trialText?: string;
-  volumeNote?: string;
-  enterpriseRange?: string;
 }
 
 const PlanCard = ({
   name, price, interval, description, features, cta, onClick, current,
-  highlight, badge, studentBadge, subPrice, trialText, volumeNote, enterpriseRange,
+  highlight, badge, studentBadge, subPrice, trialText,
 }: PlanCardProps) => (
   <motion.div
     initial={{ opacity: 0, y: 20 }}
@@ -313,9 +237,6 @@ const PlanCard = ({
       {subPrice && (
         <p className="text-xs text-text-muted mt-0.5">{subPrice}</p>
       )}
-      {enterpriseRange && (
-        <p className="text-xs text-text-muted mt-0.5">{enterpriseRange}</p>
-      )}
     </div>
 
     {studentBadge && (
@@ -329,10 +250,6 @@ const PlanCard = ({
 
     {trialText && !current && (
       <p className="text-[10px] text-brand-400 font-medium mt-1 mb-0">{trialText}</p>
-    )}
-
-    {volumeNote && (
-      <p className="text-[10px] text-text-muted mt-1">{volumeNote}</p>
     )}
 
     <button

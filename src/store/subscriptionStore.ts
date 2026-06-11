@@ -1,7 +1,7 @@
 // ── Subscription Store ──────────────────────────────────────────────────
-// Manages subscription lifecycle, feature gating, trial mechanics,
-// and dunning state. Reads from the Profile in Supabase and maintains
-// a computed set of capabilities derived from the active tier.
+// Manages subscription lifecycle, feature gating, and trial mechanics.
+// Reads from the Profile in Supabase and maintains a computed set of
+// capabilities derived from the active tier.
 
 import { create } from 'zustand';
 import {
@@ -27,10 +27,7 @@ interface SubscriptionState {
   institutionId: string | null;
   programCount: number;
 
-  // Dunning
-  paymentFailed: boolean;
-  retryCount: number;
-  gracePeriodEndsAt: string | null;
+
 
   // Computed capabilities (cached)
   capabilities: FeatureCapabilities;
@@ -57,8 +54,7 @@ interface SubscriptionState {
   downgradeToFree: (userId: string) => Promise<{ error: string | null }>;
   incrementProgramCount: (userId: string) => Promise<{ error: string | null }>;
   decrementProgramCount: (userId: string) => Promise<{ error: string | null }>;
-  simulatePaymentFailure: (userId: string) => void;
-  simulatePaymentRecovery: (userId: string) => void;
+
 }
 
 export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
@@ -73,9 +69,7 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
   institutionId: null,
   programCount: 0,
 
-  paymentFailed: false,
-  retryCount: 0,
-  gracePeriodEndsAt: null,
+
 
   capabilities: getTierCapabilities('free'),
   initialized: false,
@@ -118,7 +112,6 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       programCount: profile.program_count ?? 0,
       capabilities: getTierCapabilities(effectiveTier),
       initialized: true,
-      paymentFailed: effectiveStatus === 'past_due',
     });
   },
 
@@ -247,7 +240,7 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       trialEndsAt: null,
       isStudentDiscount: studentDiscount ?? false,
       capabilities: getTierCapabilities(tier),
-      paymentFailed: false,
+
     });
     return { error: null };
   },
@@ -297,7 +290,6 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       trialEndsAt: null,
       isStudentDiscount: false,
       capabilities: getTierCapabilities('free'),
-      paymentFailed: false,
     });
     return { error: null };
   },
@@ -322,25 +314,5 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
     return { error: error?.message ?? null };
   },
 
-  simulatePaymentFailure: (userId: string) => {
-    void userId;
-    const gracePeriod = new Date();
-    gracePeriod.setDate(gracePeriod.getDate() + 7);
-    set({
-      paymentFailed: true,
-      retryCount: 1,
-      gracePeriodEndsAt: gracePeriod.toISOString(),
-      status: 'past_due',
-    });
-  },
 
-  simulatePaymentRecovery: (userId: string) => {
-    void userId;
-    set({
-      paymentFailed: false,
-      retryCount: 0,
-      gracePeriodEndsAt: null,
-      status: 'active',
-    });
-  },
 }));

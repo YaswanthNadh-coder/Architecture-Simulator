@@ -5,7 +5,7 @@ import { PipelineCanvas } from '../pipeline/PipelineCanvas';
 import { RegisterFile } from '../inspector/RegisterFile';
 import { RightPanel } from '../inspector/RightPanel';
 import { ConsolePanel } from '../console/ConsolePanel';
-import { ChevronRight, GraduationCap, Sparkles, FileCode2 } from 'lucide-react';
+import { ChevronRight, Sparkles, FileCode2 } from 'lucide-react';
 import { useSimulatorStore } from '../../store/simulatorStore';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { UpgradeBanner } from '../monetization/UpgradeBanner';

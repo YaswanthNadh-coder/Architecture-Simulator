@@ -115,7 +115,14 @@ export const LoginPage = () => {
             </div>
 
             <div className="flex justify-end">
-              <button type="button" onClick={() => alert('Password reset: Please contact your administrator or use Supabase dashboard to reset your password.')} className="text-xs text-brand-400 hover:text-brand-300 transition-colors">
+              <button type="button" onClick={async () => {
+                if (!email) { setLocalErr('Enter your email first, then click "Forgot password?"'); return; }
+                const { error: resetErr } = await (await import('../../lib/supabase')).supabase.auth.resetPasswordForEmail(email, {
+                  redirectTo: `${window.location.origin}/login`,
+                });
+                if (resetErr) { setLocalErr(resetErr.message); }
+                else { setLocalErr(''); alert(`Password reset link sent to ${email}. Check your inbox.`); }
+              }} className="text-xs text-brand-400 hover:text-brand-300 transition-colors">
                 Forgot password?
               </button>
             </div>

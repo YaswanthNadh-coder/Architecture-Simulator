@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Settings, Cpu, X, HelpCircle, Download } from 'lucide-react';
+import { Cpu, X, HelpCircle, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSimulatorStore } from '../../store/simulatorStore';
 import { generateReport } from '../../lib/reportGenerator';

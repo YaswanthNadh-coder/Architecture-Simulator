@@ -1,7 +1,6 @@
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { TrialBanner } from '../monetization/TrialBanner';
-import { DunningBanner } from '../monetization/DunningBanner';
 
 export const AppShell = () => {
   return (
@@ -13,7 +12,6 @@ export const AppShell = () => {
       <main className="flex-1 flex flex-col h-full overflow-hidden relative">
         {/* Global banners */}
         <TrialBanner />
-        <DunningBanner />
         
         <Outlet />
       </main>

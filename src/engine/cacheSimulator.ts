@@ -82,11 +82,7 @@ export class CacheSimulator {
     const numBlocks = Math.floor(this.config.cacheSize / this.config.blockSize);
     const numSets = Math.max(1, Math.floor(numBlocks / this.config.associativity));
     
-    // Calculate offset, index, tag
-    // offset bits = log2(blockSize)
-    const offsetBits = Math.log2(this.config.blockSize);
-    // index bits = log2(numSets)
-    const indexBits = Math.log2(numSets);
+    // Address decomposition: offset (blockSize), index (numSets), tag (remaining)
 
     // Extract index and tag
     const blockAddress = Math.floor(address / this.config.blockSize);

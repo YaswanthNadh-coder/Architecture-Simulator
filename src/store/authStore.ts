@@ -22,6 +22,9 @@ interface AuthStore {
   clearError: () => void;
 }
 
+// Track auth subscription to prevent leaks
+let authUnsubscribe: (() => void) | null = null;
+
 export const useAuthStore = create<AuthStore>((set, get) => ({
   user: null,
   profile: null,
@@ -39,8 +42,13 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         set({ user: session.user, isAuthenticated: true, isEdu });
         await get().fetchProfile(session.user.id);
       }
+      // Clean up any existing subscription before creating a new one
+      if (authUnsubscribe) {
+        authUnsubscribe();
+        authUnsubscribe = null;
+      }
       // Subscribe to auth changes
-      supabase.auth.onAuthStateChange(async (_event, session) => {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
         if (session?.user) {
           const isEdu = isEduEmail(session.user.email ?? '');
           set({ user: session.user, isAuthenticated: true, isEdu });
@@ -49,6 +57,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           set({ user: null, profile: null, isAuthenticated: false, isEdu: false });
         }
       });
+      authUnsubscribe = () => subscription.unsubscribe();
     } catch (e) {
       console.error('Auth init error:', e);
     } finally {

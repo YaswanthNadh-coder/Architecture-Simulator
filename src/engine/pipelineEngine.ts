@@ -6,7 +6,7 @@
 
 import type { ParsedInstruction } from './mipsParser';
 import { handleSyscall, type SyscallResult } from './syscallHandler';
-import { CacheSimulator, type CacheConfig } from './cacheSimulator';
+import { CacheSimulator } from './cacheSimulator';
 
 // ── Types ────────────────────────────────────────────────────────────────
 

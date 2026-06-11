@@ -1,29 +1,30 @@
-export type Role = 'student' | 'ta' | 'professor';
+import { useAuthStore } from './authStore';
 
-export interface UserRole {
-  userId: string;
-  role: Role;
-}
+export type Role = 'student' | 'instructor';
 
-const CURRENT_USER_ROLE: Role = 'professor'; // Hardcoded for prototype demonstration
-
+/**
+ * RoleManager — Reads the authenticated user's actual role from the auth store.
+ * 
+ * Maps profile roles to permission checks:
+ * - 'instructor' can edit rubrics, view plagiarism, edit starter code
+ * - 'student' can submit assignments
+ */
 export class RoleManager {
   static getRole(): Role {
-    return CURRENT_USER_ROLE;
+    const profile = useAuthStore.getState().profile;
+    return profile?.role ?? 'student';
   }
 
   static canEditRubric(): boolean {
-    const role = this.getRole();
-    return role === 'professor' || role === 'ta';
+    return this.getRole() === 'instructor';
   }
 
   static canViewPlagiarismDetector(): boolean {
-    const role = this.getRole();
-    return role === 'professor' || role === 'ta';
+    return this.getRole() === 'instructor';
   }
 
   static canEditStarterCode(): boolean {
-    return this.getRole() === 'professor';
+    return this.getRole() === 'instructor';
   }
 
   static canSubmitAssignment(): boolean {
