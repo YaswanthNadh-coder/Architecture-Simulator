@@ -1,6 +1,8 @@
 import { ExternalLink, AlertTriangle, Zap, Cpu, BookOpen } from 'lucide-react';
 import { useSimulatorStore } from '../../store/simulatorStore';
 import { ISAReference } from './ISAReference';
+import { CPIBreakdownChart } from './CPIBreakdownChart';
+import { InstructionEncodingViewer } from './InstructionEncodingViewer';
 import { useState } from 'react';
 
 export const RightPanel = () => {
@@ -57,7 +59,7 @@ export const RightPanel = () => {
                 key={stage}
                 color="bg-hazard"
                 title="Data Hazard"
-                desc={`${s.instruction} in ${stage} — read-after-write dependency`}
+                desc={s.hazardExplanation || `${s.instruction} in ${stage} — read-after-write dependency`}
               />
             ))}
             {forwardStages.map(([stage, s]) => s.instruction && (
@@ -65,15 +67,15 @@ export const RightPanel = () => {
                 key={stage}
                 color="bg-forward"
                 title="Forwarding Path"
-                desc={`${s.instruction} in ${stage} → resolved via forwarding`}
+                desc={s.hazardExplanation || `${s.instruction} in ${stage} → resolved via forwarding`}
               />
             ))}
-            {stallStages.map(([stage, _s]) => (
+            {stallStages.map(([stage, s]) => (
               <HazardItem
                 key={stage}
                 color="bg-stall"
                 title="Pipeline Stall"
-                desc={`Bubble inserted in ${stage}`}
+                desc={s.hazardExplanation || `Bubble inserted in ${stage}`}
               />
             ))}
           </div>
@@ -107,8 +109,14 @@ export const RightPanel = () => {
               <span className="text-hazard">■ Stall</span>
             </div>
           </div>
+          <CPIBreakdownChart />
         </div>
       </Section>
+
+      {/* ── Instruction Encoding ────────────────────────────────────────── */}
+      <div className="px-5 pb-5 border-b border-border-subtle">
+        <InstructionEncodingViewer />
+      </div>
 
       {/* ── Config ──────────────────────────────────────────── */}
       <Section title="Config" icon={<Cpu size={13} className="text-text-muted" />}>

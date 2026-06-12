@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { assemble, type ParsedInstruction, type ParseError } from '../engine/mipsParser';
-import { MIPSPipelineEngine, type PipelineSnapshot, type EngineStats } from '../engine/pipelineEngine';
+import { MIPSPipelineEngine, type PipelineSnapshot, type EngineStats, type DatapathValues } from '../engine/pipelineEngine';
 import { completeSyscallInput, SYSCALL } from '../engine/syscallHandler';
 import type { CacheConfig } from '../engine/cacheSimulator';
 
@@ -13,6 +13,7 @@ export interface StageState {
   status: InstructionStatus;
   id: string;
   line?: number;
+  hazardExplanation?: string;
 }
 
 export interface PipelineState {
@@ -29,6 +30,9 @@ export interface SimStats {
   totalCycles: number;
   instructionsCompleted: number;
   stallCycles: number;
+  dataStallCycles: number;
+  controlStallCycles: number;
+  memoryStallCycles: number;
   forwardCount: number;
   branchCount: number;
   branchMispredictions: number;
@@ -48,6 +52,7 @@ interface SimulatorStore {
   cycle: number;
   pc: number;
   pipeline: PipelineState;
+  datapathValues: DatapathValues;
   isFinished: boolean;
 
   // Parse state
@@ -121,6 +126,7 @@ function snapshotToPipelineState(snap: PipelineSnapshot): PipelineState {
     status: entry.status,
     id: entry.instruction ? `inst-${entry.instruction.address}-${stageName}` : `bubble-${stageName}`,
     line: entry.instruction?.line,
+    hazardExplanation: entry.hazardExplanation,
   });
   return {
     IF: convert(snap.IF, 'IF'),
@@ -156,6 +162,7 @@ const EMPTY_PIPELINE: PipelineState = {
 
 const EMPTY_STATS: SimStats = {
   totalCycles: 0, instructionsCompleted: 0, stallCycles: 0,
+  dataStallCycles: 0, controlStallCycles: 0, memoryStallCycles: 0,
   forwardCount: 0, branchCount: 0, branchMispredictions: 0,
   flushCount: 0, cpi: 0, efficiency: 0,
 };
@@ -214,6 +221,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
   cycle: 0,
   pc: 0,
   pipeline: EMPTY_PIPELINE,
+  datapathValues: { pc: 0, rsVal: 0, rtVal: 0, imm: 0, aluResult: 0, memData: 0, writeData: 0 },
   isFinished: false,
 
   instructions: [],
@@ -288,6 +296,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
       cycle: 0,
       pc: snap.pc,
       pipeline: EMPTY_PIPELINE,
+      datapathValues: snap.datapathValues,
       isFinished: false,
       stats: EMPTY_STATS,
       modifiedRegs: new Set(),
@@ -374,6 +383,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
       cycle: snap.cycle,
       pc: snap.pc,
       pipeline: snapshotToPipelineState(snap.pipeline),
+      datapathValues: snap.datapathValues,
       isFinished: snap.finished,
       stats: computeStats(snap.stats),
       modifiedRegs: modified,
@@ -394,6 +404,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
       cycle: snap.cycle,
       pc: snap.pc,
       pipeline: snapshotToPipelineState(snap.pipeline),
+      datapathValues: snap.datapathValues,
       isFinished: snap.finished,
       stats: computeStats(snap.stats),
       modifiedRegs: new Set(),

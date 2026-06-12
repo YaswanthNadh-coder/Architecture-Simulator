@@ -5,8 +5,12 @@ import { PipelineCanvas } from '../pipeline/PipelineCanvas';
 import { RegisterFile } from '../inspector/RegisterFile';
 import { RightPanel } from '../inspector/RightPanel';
 import { ConsolePanel } from '../console/ConsolePanel';
-import { ChevronRight, Sparkles, FileCode2 } from 'lucide-react';
+import { ChevronRight, Sparkles, FileCode2, Download, GraduationCap } from 'lucide-react';
 import { useSimulatorStore } from '../../store/simulatorStore';
+import { assemble } from '../../engine/mipsParser';
+import { generateLogisimImage, generateVerilogMem } from '../../engine/exportUtils';
+import { TutorialOverlay } from './TutorialOverlay';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { UpgradeBanner } from '../monetization/UpgradeBanner';
 
@@ -17,9 +21,11 @@ import { MemoryView } from './MemoryView';
 import { DiffView } from './DiffView';
 import { GradingView } from './GradingView';
 import { CacheView } from './CacheView';
+import { BranchPredictionView } from './BranchPredictionView';
 import { ArchitectureSettingsPanel } from '../settings/ArchitectureSettingsPanel';
+import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 
-type TabView = 'Pipeline' | 'Datapath' | 'Timing' | 'Memory' | 'Cache' | 'Diff' | 'Grading';
+type TabView = 'Pipeline' | 'Datapath' | 'Timing' | 'Memory' | 'Cache' | 'Diff' | 'Grading' | 'Branching';
 
 const STORAGE_KEY = 'archsim_projects';
 
@@ -35,12 +41,44 @@ export const SimulatorPage = () => {
   const { tier } = useSubscriptionStore();
   const [activeTab, setActiveTab] = useState<TabView>('Pipeline');
   const [showConsole, setShowConsole] = useState(true);
+  const { showHelp, setShowHelp } = useKeyboardShortcuts((tab) => setActiveTab(tab));
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const projectId = searchParams.get('project');
   
   const [projectName, setProjectName] = useState('Scratchpad');
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
+
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
+
+  const handleExport = (format: 'logisim' | 'verilog') => {
+    const result = assemble(code);
+    if (result.errors.length > 0) {
+      alert('Fix assembly errors before exporting.');
+      return;
+    }
+    let content = '';
+    let filename = '';
+    if (format === 'logisim') {
+      content = generateLogisimImage(result.instructions, result.dataSegment);
+      filename = 'mem.txt';
+    } else {
+      content = generateVerilogMem(result.instructions, result.dataSegment);
+      filename = 'mem.v';
+    }
+    
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setShowExportMenu(false);
+  };
 
   useEffect(() => {
     if (projectId) {
@@ -120,7 +158,7 @@ export const SimulatorPage = () => {
 
         {/* View tabs */}
         <nav className="flex items-center gap-1">
-          {(['Pipeline', 'Datapath', 'Timing', 'Memory', 'Cache', 'Diff', 'Grading'] as TabView[]).map((tab) => (
+          {(['Pipeline', 'Datapath', 'Timing', 'Memory', 'Cache', 'Diff', 'Grading', 'Branching'] as TabView[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -145,6 +183,44 @@ export const SimulatorPage = () => {
           >
             Console
           </button>
+
+          {/* Tutorial Button */}
+          <div className="w-px h-4 bg-border-subtle mx-1" />
+          <button
+            onClick={() => setShowTutorial(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-text-muted hover:text-white hover:bg-white/5 transition-all"
+          >
+            <GraduationCap size={13} /> Tutorial
+          </button>
+
+          {/* Export Menu */}
+          <div className="relative ml-2">
+            <button
+              onClick={() => setShowExportMenu(!showExportMenu)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-text-muted hover:text-white hover:bg-white/5 transition-all"
+            >
+              <Download size={13} /> Export
+            </button>
+            {showExportMenu && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowExportMenu(false)} />
+                <div className="absolute right-0 top-full mt-1 w-40 bg-bg-panel border border-border-subtle rounded-lg shadow-xl z-50 overflow-hidden py-1">
+                  <button
+                    onClick={() => handleExport('logisim')}
+                    className="w-full text-left px-4 py-2 text-xs text-text-main hover:bg-brand-500/10 hover:text-brand-400"
+                  >
+                    Logisim Image (.txt)
+                  </button>
+                  <button
+                    onClick={() => handleExport('verilog')}
+                    className="w-full text-left px-4 py-2 text-xs text-text-main hover:bg-brand-500/10 hover:text-brand-400"
+                  >
+                    Verilog Mem (.v)
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
           
           <div className="w-px h-4 bg-border-subtle mx-1" />
           <ArchitectureSettingsPanel />
@@ -185,9 +261,10 @@ export const SimulatorPage = () => {
             {activeTab === 'Cache' && <CacheView />}
             {activeTab === 'Diff' && <DiffView />}
             {activeTab === 'Grading' && <GradingView />}
+            {activeTab === 'Branching' && <BranchPredictionView />}
           </div>
 
-          {/* Register File (Always visible) */}
+          {/* Lower Register File / Execution Controls panel */}
           <div className="h-[220px] shrink-0">
             <RegisterFile />
           </div>
@@ -196,6 +273,62 @@ export const SimulatorPage = () => {
         {/* Right panel */}
         <RightPanel />
       </div>
+
+      {/* Shortcuts Help Overlay */}
+      <AnimatePresence>
+        {showHelp && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            className="fixed bottom-6 right-6 bg-bg-surface border border-border-subtle rounded-xl p-4 shadow-2xl z-50 w-72"
+          >
+            <div className="flex items-center justify-between mb-3 border-b border-border-subtle pb-2">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <span className="bg-brand-500/20 text-brand-400 px-1.5 py-0.5 rounded text-[10px]">?</span>
+                Keyboard Shortcuts
+              </h3>
+              <button onClick={() => setShowHelp(false)} className="text-text-muted hover:text-white">
+                ✕
+              </button>
+            </div>
+            <div className="space-y-2 max-h-64 overflow-y-auto custom-scrollbar">
+              <div className="text-[10px] text-text-muted uppercase tracking-wider mb-1 font-bold">Playback</div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-text-main">Step forward</span>
+                <span className="font-mono text-brand-400 bg-brand-500/10 px-1.5 py-0.5 rounded">Space</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-text-main">Toggle auto-play</span>
+                <span className="font-mono text-brand-400 bg-brand-500/10 px-1.5 py-0.5 rounded">Shift+Space</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-text-main">Step backward</span>
+                <span className="font-mono text-brand-400 bg-brand-500/10 px-1.5 py-0.5 rounded">Ctrl+Z</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-text-main">Reset</span>
+                <span className="font-mono text-brand-400 bg-brand-500/10 px-1.5 py-0.5 rounded">R</span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-text-main">Assemble</span>
+                <span className="font-mono text-brand-400 bg-brand-500/10 px-1.5 py-0.5 rounded">Ctrl+Enter</span>
+              </div>
+              
+              <div className="text-[10px] text-text-muted uppercase tracking-wider mt-3 mb-1 font-bold">Views</div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-text-main">Switch Tabs</span>
+                <span className="font-mono text-brand-400 bg-brand-500/10 px-1.5 py-0.5 rounded">1-7</span>
+              </div>
+            </div>
+            <div className="mt-3 text-[10px] text-text-muted text-center italic">
+              Shortcuts are disabled while typing in the editor.
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {showTutorial && <TutorialOverlay onClose={() => setShowTutorial(false)} />}
     </div>
   );
 };

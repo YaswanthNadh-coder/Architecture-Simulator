@@ -146,7 +146,21 @@ const HardwareBlock = ({ comp, isActive, statusColor }: {
 // ── Main Component ───────────────────────────────────────────────────
 
 export const DatapathView = () => {
-  const { pipeline, forwardingEnabled, cycle } = useSimulatorStore();
+  const { pipeline, forwardingEnabled, cycle, datapathValues } = useSimulatorStore();
+
+  const getWireValue = (wireId: string, values: any) => {
+    switch (wireId) {
+      case 'pc-to-imem': return `0x${values.pc.toString(16).toUpperCase()}`;
+      case 'idex-to-alua': return values.rsVal;
+      case 'idex-to-alub': return values.rtVal;
+      case 'idex-imm-to-mux': return values.imm;
+      case 'alu-out': return values.aluResult;
+      case 'exmem-to-dmem-addr': return values.aluResult;
+      case 'dmem-out': return values.memData;
+      case 'mux-to-regfile': return values.writeData;
+      default: return null;
+    }
+  };
 
   // Determine which stages are active
   const stageActive: Record<string, boolean> = {
@@ -371,15 +385,13 @@ export const DatapathView = () => {
             )
           ))}
 
-          {/* Animated data dots traveling along active wires */}
-          {WIRES.filter(w => stageActive[w.stage] && w.stage !== 'FWD').slice(0, 8).map(wire => {
+          {/* Animated data chips traveling along active wires */}
+          {WIRES.filter(w => stageActive[w.stage] && w.stage !== 'FWD').map(wire => {
             const color = STAGE_COLORS[wire.stage]?.active ?? '#60a5fa';
+            const value = getWireValue(wire.id, datapathValues);
             return (
-              <motion.circle
-                key={`dot-${wire.id}-${cycle}`}
-                r={2.5}
-                fill={color}
-                opacity={0.8}
+              <motion.g
+                key={`chip-${wire.id}-${cycle}`}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: [0, 1, 1, 0] }}
                 transition={{ duration: 0.8, ease: 'easeInOut' }}
@@ -390,7 +402,17 @@ export const DatapathView = () => {
                   path={wire.path}
                   fill="freeze"
                 />
-              </motion.circle>
+                {value !== null ? (
+                  <g transform="translate(0, -6)">
+                    <rect x={-15} y={-5} width={30} height={10} rx={5} fill={color} opacity={0.9} />
+                    <text x={0} y={2.5} fill="#fff" textAnchor="middle" className="text-[6px] font-mono font-bold">
+                      {value}
+                    </text>
+                  </g>
+                ) : (
+                  <circle r={2.5} fill={color} opacity={0.8} />
+                )}
+              </motion.g>
             );
           })}
 

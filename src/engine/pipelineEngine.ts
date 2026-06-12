@@ -15,6 +15,7 @@ export type InstructionStatus = 'normal' | 'hazard' | 'forward' | 'stall' | 'bub
 export interface StageEntry {
   instruction: ParsedInstruction | null;
   status: InstructionStatus;
+  hazardExplanation?: string;
 }
 
 export interface PipelineSnapshot {
@@ -25,14 +26,24 @@ export interface PipelineSnapshot {
   WB: StageEntry;
 }
 
+export interface DatapathValues {
+  pc: number;
+  rsVal: number;
+  rtVal: number;
+  imm: number;
+  aluResult: number;
+  memData: number;
+  writeData: number;
+}
+
 /** Record of which instruction was in which stage at a given cycle */
 export interface CycleRecord {
   cycle: number;
-  IF: { instruction: ParsedInstruction | null; status: InstructionStatus };
-  ID: { instruction: ParsedInstruction | null; status: InstructionStatus };
-  EX: { instruction: ParsedInstruction | null; status: InstructionStatus };
-  MEM: { instruction: ParsedInstruction | null; status: InstructionStatus };
-  WB: { instruction: ParsedInstruction | null; status: InstructionStatus };
+  IF: { instruction: ParsedInstruction | null; status: InstructionStatus; hazardExplanation?: string };
+  ID: { instruction: ParsedInstruction | null; status: InstructionStatus; hazardExplanation?: string };
+  EX: { instruction: ParsedInstruction | null; status: InstructionStatus; hazardExplanation?: string };
+  MEM: { instruction: ParsedInstruction | null; status: InstructionStatus; hazardExplanation?: string };
+  WB: { instruction: ParsedInstruction | null; status: InstructionStatus; hazardExplanation?: string };
 }
 
 export interface CycleSnapshot {
@@ -41,6 +52,7 @@ export interface CycleSnapshot {
   registers: Int32Array;
   memory: Map<number, number>;
   pipeline: PipelineSnapshot;
+  datapathValues: DatapathValues;
   stats: EngineStats;
   hi: number;
   lo: number;
@@ -54,7 +66,10 @@ export interface CycleSnapshot {
 export interface EngineStats {
   totalCycles: number;
   instructionsCompleted: number;
-  stallCycles: number;
+  stallCycles: number; // total
+  dataStallCycles: number;
+  controlStallCycles: number;
+  memoryStallCycles: number;
   forwardCount: number;
   branchCount: number;
   branchMispredictions: number;
@@ -108,6 +123,7 @@ interface IDEXLatch {
   loResult: number;
   predictedTaken: boolean;
   fallthroughPC: number;
+  hazardExplanation?: string;
 }
 
 interface EXMEMLatch {
@@ -128,6 +144,7 @@ interface EXMEMLatch {
   writesHiLo: boolean;
   hiResult: number;
   loResult: number;
+  hazardExplanation?: string;
 }
 
 interface MEMWBLatch {
@@ -355,6 +372,7 @@ export class MIPSPipelineEngine {
 
     if (memStallNeeded) {
       this.stats.stallCycles++;
+      this.stats.memoryStallCycles++;
       this.events.onStall?.('memory latency', this.cycle);
 
       this.memWb = bubbleMEMWB();
@@ -525,6 +543,7 @@ export class MIPSPipelineEngine {
         if (actuallyTaken !== this.idEx.predictedTaken) {
           this.stats.branchMispredictions++;
           this.stats.flushCount++;
+          this.stats.controlStallCycles += 1; // 1 cycle penalty for flush in IF
           branchTaken = true; // Tell Fetch to flush and redirect
           if (actuallyTaken) {
              // Predicted not-taken, but was taken.
@@ -556,6 +575,7 @@ export class MIPSPipelineEngine {
         instruction: this.idEx.instruction,
         pc: this.idEx.pc,
         aluResult,
+        hiResult,
         writeData: bVal,
         writeReg: this.idEx.writeReg,
         regWrite: this.idEx.regWrite,
@@ -568,8 +588,8 @@ export class MIPSPipelineEngine {
         valid: true,
         status: exStatus,
         writesHiLo,
-        hiResult,
         loResult,
+        hazardExplanation: (forwardA || forwardB) ? `Forwarding paths used: ${forwardA ? `A (${this.idEx.rsVal} → ${aVal}) from ${forwardA.toUpperCase()}` : ''} ${forwardB ? `B (${this.idEx.rtVal} → ${bVal}) from ${forwardB.toUpperCase()}` : ''}`.trim() : undefined,
       };
     } else {
       newExMem = bubbleEXMEM();
@@ -583,7 +603,10 @@ export class MIPSPipelineEngine {
       // Stall: insert bubble into EX, freeze IF and ID
       newIdEx = bubbleIDEX();
       newIdEx.status = 'stall';
+      newIdEx.instruction = this.ifId.instruction;
+      newIdEx.hazardExplanation = `Load-use hazard: ${this.ifId.instruction?.raw} needs a register being loaded by ${this.idEx.instruction?.raw}. Inserting 1 stall cycle.`;
       this.stats.stallCycles++;
+      this.stats.dataStallCycles++;
       this.events.onStall?.('load-use hazard', this.cycle);
     } else if (branchTaken) {
       // Flush: instruction in ID was fetched speculatively, discard it
@@ -911,6 +934,9 @@ export class MIPSPipelineEngine {
       totalCycles: 0,
       instructionsCompleted: 0,
       stallCycles: 0,
+      dataStallCycles: 0,
+      controlStallCycles: 0,
+      memoryStallCycles: 0,
       forwardCount: 0,
       branchCount: 0,
       branchMispredictions: 0,
@@ -930,12 +956,14 @@ export class MIPSPipelineEngine {
           status: this.ifId.valid ? 'normal' : 'bubble',
         },
         ID: {
-          instruction: this.idEx.valid ? this.idEx.instruction : null,
-          status: this.idEx.valid ? this.idEx.status : 'bubble',
+          instruction: this.idEx.valid ? this.idEx.instruction : (this.idEx.status === 'stall' ? this.ifId.instruction : null),
+          status: this.idEx.valid ? this.idEx.status : (this.idEx.status === 'stall' ? 'stall' : 'bubble'),
+          hazardExplanation: this.idEx.hazardExplanation,
         },
         EX: {
           instruction: this.exMem.valid ? this.exMem.instruction : null,
           status: this.exMem.valid ? this.exMem.status : 'bubble',
+          hazardExplanation: this.exMem.hazardExplanation,
         },
         MEM: {
           instruction: this.memWb.valid ? this.memWb.instruction : null,
@@ -945,6 +973,15 @@ export class MIPSPipelineEngine {
           instruction: this.memWb.valid ? this.memWb.instruction : null,
           status: this.memWb.valid ? this.memWb.status : 'bubble',
         },
+      },
+      datapathValues: {
+        pc: this.pc,
+        rsVal: this.idEx.rsVal,
+        rtVal: this.idEx.rtVal,
+        imm: this.idEx.imm,
+        aluResult: this.exMem.aluResult,
+        memData: this.memWb.memData, // from MEM stage
+        writeData: this.memWb.memToReg ? this.memWb.memData : this.memWb.aluResult,
       },
       stats: { ...this.stats },
       hi: this.hi,

@@ -8,6 +8,8 @@ export interface ExampleProgram {
   name: string;
   category: 'basics' | 'algorithms' | 'hazards' | 'syscalls';
   description: string;
+  difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
+  tags: string[];
   code: string;
 }
 
@@ -18,6 +20,8 @@ export const EXAMPLE_PROGRAMS: ExampleProgram[] = [
     name: 'Hello World',
     category: 'syscalls',
     description: 'Print a string using syscall 4. Demonstrates .data section and la instruction.',
+    difficulty: 'Beginner',
+    tags: ['syscalls', 'data-segment'],
     code: `# Hello World — MIPS Syscall Demo
 # Uses syscall 4 (print_string) to output a message
 
@@ -39,6 +43,8 @@ main:
     name: 'Fibonacci (Loop)',
     category: 'basics',
     description: 'Compute Fibonacci numbers iteratively. Shows data hazards and MEM→EX forwarding.',
+    difficulty: 'Intermediate',
+    tags: ['loops', 'data-hazards', 'forwarding'],
     code: `# Fibonacci Loop — Pipeline Demo
 # Demonstrates data hazards & forwarding
 
@@ -69,6 +75,8 @@ loop:
     name: 'Fibonacci (Recursive)',
     category: 'algorithms',
     description: 'Recursive Fibonacci using the stack. Demonstrates jal/jr, stack frames, and $ra.',
+    difficulty: 'Advanced',
+    tags: ['recursion', 'stack', 'functions'],
     code: `# Recursive Fibonacci
 # Demonstrates stack usage, jal/jr, and nested function calls
 
@@ -118,6 +126,8 @@ fib_done:
     name: 'Bubble Sort',
     category: 'algorithms',
     description: 'Sort an array using bubble sort. Heavy use of .data, lw/sw, and branch instructions.',
+    difficulty: 'Intermediate',
+    tags: ['arrays', 'loops', 'memory'],
     code: `# Bubble Sort
 # Sorts an array of integers in ascending order
 
@@ -186,6 +196,8 @@ done:
     name: 'Factorial (Recursive)',
     category: 'algorithms',
     description: 'Compute n! recursively. Demonstrates stack frame management and jal/jr.',
+    difficulty: 'Advanced',
+    tags: ['recursion', 'stack', 'math'],
     code: `# Recursive Factorial
 # Computes n! using recursive calls and the stack
 
@@ -230,6 +242,8 @@ recurse_fact:
     name: 'Data Hazard Showcase',
     category: 'hazards',
     description: 'Demonstrates RAW data hazards. Toggle forwarding to see the difference in stall cycles.',
+    difficulty: 'Beginner',
+    tags: ['data-hazards', 'stalls', 'load-use'],
     code: `# Data Hazard Showcase
 # Toggle forwarding OFF to see stalls!
 
@@ -260,6 +274,8 @@ main:
     name: 'Forwarding Demo',
     category: 'hazards',
     description: 'Shows EX→EX and MEM→EX forwarding paths in action.',
+    difficulty: 'Intermediate',
+    tags: ['forwarding', 'data-hazards'],
     code: `# Forwarding Path Demo
 # Run with forwarding ON, then OFF, and compare cycle counts
 
@@ -292,6 +308,8 @@ main:
     name: 'Branch Prediction Demo',
     category: 'hazards',
     description: 'Shows pipeline flushes caused by branch mispredictions (predict-not-taken).',
+    difficulty: 'Intermediate',
+    tags: ['control-hazards', 'branch-prediction', 'flushes'],
     code: `# Branch Prediction Demo
 # Our pipeline uses predict-not-taken strategy
 
@@ -315,6 +333,8 @@ loop:
     name: 'Input/Output Demo',
     category: 'syscalls',
     description: 'Read an integer from the user, double it, and print the result.',
+    difficulty: 'Beginner',
+    tags: ['syscalls', 'io', 'math'],
     code: `# I/O Demo — Read, Compute, Print
 # Uses syscalls 5 (read_int) and 1 (print_int)
 
@@ -355,6 +375,8 @@ main:
     name: 'GCD (Euclidean)',
     category: 'algorithms',
     description: 'Compute GCD of two numbers using the Euclidean algorithm.',
+    difficulty: 'Intermediate',
+    tags: ['math', 'loops', 'division'],
     code: `# GCD — Euclidean Algorithm
 # Computes gcd(a, b) iteratively
 
@@ -385,6 +407,8 @@ gcd_done:
     name: 'Binary Search',
     category: 'algorithms',
     description: 'Search for a value in a sorted array using binary search.',
+    difficulty: 'Advanced',
+    tags: ['algorithms', 'arrays', 'branching'],
     code: `# Binary Search
 # Searches a sorted array for a target value
 
@@ -439,6 +463,82 @@ not_found:
   syscall
 `,
   },
+  {
+    id: 'cache-locality',
+    name: 'Cache Spatial Locality',
+    category: 'algorithms',
+    description: 'Demonstrates spatial locality by accessing an array sequentially. Turn on Cache Simulator to see high hit rates.',
+    difficulty: 'Intermediate',
+    tags: ['cache', 'memory', 'arrays'],
+    code: `# Cache Spatial Locality Demo
+# Accessing elements sequentially benefits from larger cache block sizes.
+
+.data
+array:  .word 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
+size:   .word 16
+
+.text
+main:
+  la    $s0, array        # $s0 = base address
+  lw    $s1, size         # $s1 = size
+  addi  $t0, $zero, 0     # i = 0
+  addi  $t1, $zero, 0     # sum = 0
+
+loop:
+  beq   $t0, $s1, done    # if i == size, done
+  
+  sll   $t2, $t0, 2       # offset = i * 4
+  add   $t3, $s0, $t2     # addr = base + offset
+  lw    $t4, 0($t3)       # load array[i]
+  
+  add   $t1, $t1, $t4     # sum += array[i]
+  addi  $t0, $t0, 1       # i++
+  j     loop
+
+done:
+  # sum is in $t1 (should be 136)
+  add   $a0, $t1, $zero
+  li    $v0, 1
+  syscall
+  li    $v0, 10
+  syscall
+`,
+  },
+  {
+    id: 'cache-thrashing',
+    name: 'Cache Thrashing',
+    category: 'hazards',
+    description: 'Demonstrates cache thrashing in a direct-mapped cache by alternating accesses to addresses that map to the same set.',
+    difficulty: 'Advanced',
+    tags: ['cache', 'memory', 'performance'],
+    code: `# Cache Thrashing Demo
+# Configure cache to 256B Direct-Mapped.
+# Addresses 0x10010000 and 0x10010100 will map to the same set (index 0).
+# Alternating accesses cause 100% miss rate!
+
+.text
+main:
+  lui   $s0, 0x1001       # Base address 1: 0x10010000
+  lui   $s1, 0x1001
+  ori   $s1, $s1, 0x0100  # Base address 2: 0x10010100 (256 bytes later)
+  
+  addi  $t0, $zero, 0     # counter = 0
+  addi  $t1, $zero, 5     # loop 5 times (10 accesses)
+
+loop:
+  beq   $t0, $t1, done
+  
+  lw    $t2, 0($s0)       # Access 1 -> Miss (replaces block 0)
+  lw    $t3, 0($s1)       # Access 2 -> Miss (replaces block 0 again!)
+  
+  addi  $t0, $t0, 1
+  j     loop
+
+done:
+  li    $v0, 10
+  syscall
+`,
+  }
 ];
 
 export function getProgramsByCategory(category: string): ExampleProgram[] {
