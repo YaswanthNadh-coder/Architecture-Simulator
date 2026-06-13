@@ -5,9 +5,11 @@ import { AutoGrader, type GradingReport } from '../../engine/AutoGrader';
 import { PlagiarismDetector, type PlagiarismReport } from '../../engine/PlagiarismDetector';
 import {
   CheckCircle2, XCircle, AlertTriangle, Play, ShieldAlert, Cpu,
-  ArrowLeft, Upload, FileCode2, Trash2, Download, ChevronDown, ChevronRight,
+  ArrowLeft, Upload, FileCode2, Trash2, Download, ChevronDown, ChevronRight, Wrench
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useAssignmentStore } from '../../store/assignmentStore';
+import { AssignmentBuilder } from './AssignmentBuilder';
 
 interface BatchEntry {
   filename: string;
@@ -36,9 +38,11 @@ export const GradingPage = () => {
   const [plagiarismReport, setPlagiarismReport] = useState<PlagiarismReport | null>(null);
 
   // Active tab
-  const [activeSection, setActiveSection] = useState<'single' | 'batch' | 'plagiarism'>('single');
+  const [activeSection, setActiveSection] = useState<'single' | 'batch' | 'plagiarism' | 'builder'>('single');
 
-  const assignment = ASSIGNMENTS.find(a => a.id === selectedAssignment)!;
+  const { customAssignments } = useAssignmentStore();
+  const allAssignments = [...ASSIGNMENTS, ...customAssignments];
+  const assignment = allAssignments.find(a => a.id === selectedAssignment) || allAssignments[0];
 
   const handleGradeSingle = () => {
     if (!singleCode.trim()) return;
@@ -149,9 +153,18 @@ export const GradingPage = () => {
             }}
             className="bg-bg-panel border border-border-subtle rounded-lg px-3 py-1.5 text-xs text-white outline-none focus:border-brand-500 transition-colors min-w-[240px]"
           >
-            {ASSIGNMENTS.map(a => (
-              <option key={a.id} value={a.id}>{a.title}</option>
-            ))}
+            <optgroup label="Built-in Assignments">
+              {ASSIGNMENTS.map(a => (
+                <option key={a.id} value={a.id}>{a.title}</option>
+              ))}
+            </optgroup>
+            {customAssignments.length > 0 && (
+              <optgroup label="My Custom Library">
+                {customAssignments.map(a => (
+                  <option key={a.id} value={a.id}>{a.title} (Custom)</option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </div>
       </header>
@@ -187,6 +200,7 @@ export const GradingPage = () => {
             { id: 'single', label: 'Single File', icon: <FileCode2 size={14} /> },
             { id: 'batch', label: 'Batch Grading', icon: <Upload size={14} /> },
             { id: 'plagiarism', label: 'Plagiarism Detector', icon: <ShieldAlert size={14} /> },
+            { id: 'builder', label: 'Assignment Builder', icon: <Wrench size={14} /> },
           ] as const).map(tab => (
             <button
               key={tab.id}
@@ -247,6 +261,15 @@ export const GradingPage = () => {
                 onCompare={handleCheckPlagiarism}
                 onReset={() => setPlagiarismReport(null)}
               />
+            </motion.div>
+          )}
+
+          {activeSection === 'builder' && (
+            <motion.div key="builder" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
+              <AssignmentBuilder onSelectAssignment={(id) => {
+                setSelectedAssignment(id);
+                setActiveSection('single');
+              }} />
             </motion.div>
           )}
         </AnimatePresence>

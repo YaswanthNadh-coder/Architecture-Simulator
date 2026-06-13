@@ -1,5 +1,5 @@
 import { MIPSPipelineEngine } from './pipelineEngine';
-import { assemble } from './mipsParser';
+import { assemble, parseRegister } from './mipsParser';
 import { type AssignmentProfile, type TestCase } from './assignmentProfile';
 
 export interface TestCaseResult {
@@ -110,8 +110,10 @@ export class AutoGrader {
     // Apply inputs
     if (tc.input?.registers) {
       for (const [reg, val] of Object.entries(tc.input.registers)) {
-        const regIndex = parseInt(reg.replace('$', ''));
-        engine.getRegisters()[regIndex] = val;
+        const regIndex = parseRegister(reg) ?? parseInt(reg.replace('$', ''));
+        if (regIndex !== null && !isNaN(regIndex)) {
+          engine.getRegisters()[regIndex] = val;
+        }
       }
     }
     if (tc.input?.memory) {
@@ -142,11 +144,38 @@ export class AutoGrader {
     if (tc.expected.registers) {
       const regs = engine.getRegisters();
       for (const [reg, expVal] of Object.entries(tc.expected.registers)) {
-        const regIndex = parseInt(reg.replace('$', ''));
+        const regIndex = parseRegister(reg) ?? parseInt(reg.replace('$', ''));
+        if (regIndex === null || isNaN(regIndex) || regIndex < 0 || regIndex > 31) {
+          passed = false;
+          feedback.push(`Invalid register name: ${reg}`);
+          continue;
+        }
         const actualVal = regs[regIndex] | 0;
         if (actualVal !== expVal) {
           passed = false;
           feedback.push(`Register ${reg}: expected ${expVal}, got ${actualVal}`);
+        }
+      }
+    }
+
+    if (tc.expected.memory) {
+      const mem = engine.getMemory();
+      for (const [addrStr, expVal] of Object.entries(tc.expected.memory)) {
+        const addr = Number(addrStr);
+        if (isNaN(addr)) {
+          passed = false;
+          feedback.push(`Invalid memory address: ${addrStr}`);
+          continue;
+        }
+        const b0 = mem.get(addr) ?? 0;
+        const b1 = mem.get(addr + 1) ?? 0;
+        const b2 = mem.get(addr + 2) ?? 0;
+        const b3 = mem.get(addr + 3) ?? 0;
+        const actualVal = (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
+
+        if (actualVal !== expVal) {
+          passed = false;
+          feedback.push(`Memory at ${addr}: expected ${expVal}, got ${actualVal}`);
         }
       }
     }

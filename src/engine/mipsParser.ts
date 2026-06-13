@@ -174,7 +174,7 @@ function parseNumber(s: string): number | null {
   return isNaN(v) ? null : v;
 }
 
-function parseRegister(s: string): number | null {
+export function parseRegister(s: string): number | null {
   s = s.trim().toLowerCase();
   if (!s.startsWith('$')) return null;
   return REG[s] ?? null;
