@@ -51,3 +51,10 @@ export type ActivityRecord = {
   duration_seconds: number;
   created_at: string;
 };
+
+export type SimulationEvent = {
+  id: string;
+  user_id: string;
+  event_type: 'assemble' | 'step';
+  created_at: string;
+};
