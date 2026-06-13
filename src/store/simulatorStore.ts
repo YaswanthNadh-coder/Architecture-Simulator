@@ -3,6 +3,7 @@ import { assemble, type ParsedInstruction, type ParseError } from '../engine/mip
 import { MIPSPipelineEngine, type PipelineSnapshot, type EngineStats, type DatapathValues } from '../engine/pipelineEngine';
 import { completeSyscallInput, SYSCALL } from '../engine/syscallHandler';
 import type { CacheConfig } from '../engine/cacheSimulator';
+import { logSimulationEvent } from '../services/activityService';
 
 // ── Re-export types for UI compatibility ─────────────────────────────────
 
@@ -278,6 +279,8 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
       return false;
     }
 
+    logSimulationEvent('assemble');
+
     engine.forwardingEnabled = forwardingEnabled;
     engine.branchPrediction = branchPrediction;
     engine.memoryLatency = memoryLatency;
@@ -324,6 +327,10 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
         timerWorker.postMessage({ command: 'stop' });
       }
       return;
+    }
+
+    if (!state.isPlaying) {
+      logSimulationEvent('step');
     }
 
     const prevRegs = engine.getSnapshot().registers;

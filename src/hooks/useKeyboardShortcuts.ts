@@ -43,7 +43,7 @@ function isEditorFocused(): boolean {
   return false;
 }
 
-type TabView = 'Pipeline' | 'Datapath' | 'Timing' | 'Memory' | 'Cache' | 'Diff' | 'Grading' | 'Branching';
+type TabView = 'Pipeline' | 'Datapath' | 'Timing' | 'Memory' | 'Cache' | 'Diff' | 'Branching';
 
 const TAB_MAP: Record<string, TabView> = {
   '1': 'Pipeline',

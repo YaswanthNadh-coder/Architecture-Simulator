@@ -19,13 +19,13 @@ import { DatapathView } from './DatapathView';
 import { TimingView } from './TimingView';
 import { MemoryView } from './MemoryView';
 import { DiffView } from './DiffView';
-import { GradingView } from './GradingView';
+
 import { CacheView } from './CacheView';
 import { BranchPredictionView } from './BranchPredictionView';
 import { ArchitectureSettingsPanel } from '../settings/ArchitectureSettingsPanel';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 
-type TabView = 'Pipeline' | 'Datapath' | 'Timing' | 'Memory' | 'Cache' | 'Diff' | 'Grading' | 'Branching';
+type TabView = 'Pipeline' | 'Datapath' | 'Timing' | 'Memory' | 'Cache' | 'Diff' | 'Branching';
 
 const STORAGE_KEY = 'archsim_projects';
 
@@ -37,14 +37,15 @@ interface Project {
 }
 
 export const SimulatorPage = () => {
+  const [searchParams] = useSearchParams();
+  const projectId = searchParams.get('project');
+
   const { code, setCode, cycle, waitingForInput, stats, isFinished } = useSimulatorStore();
   const { tier } = useSubscriptionStore();
   const [activeTab, setActiveTab] = useState<TabView>('Pipeline');
   const [showConsole, setShowConsole] = useState(true);
   const { showHelp, setShowHelp } = useKeyboardShortcuts((tab) => setActiveTab(tab));
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const projectId = searchParams.get('project');
   
   const [projectName, setProjectName] = useState('Scratchpad');
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
@@ -158,7 +159,7 @@ export const SimulatorPage = () => {
 
         {/* View tabs */}
         <nav className="flex items-center gap-1">
-          {(['Pipeline', 'Datapath', 'Timing', 'Memory', 'Cache', 'Diff', 'Grading', 'Branching'] as TabView[]).map((tab) => (
+          {(['Pipeline', 'Datapath', 'Timing', 'Memory', 'Cache', 'Diff', 'Branching'] as TabView[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -260,7 +261,7 @@ export const SimulatorPage = () => {
             {activeTab === 'Memory' && <MemoryView />}
             {activeTab === 'Cache' && <CacheView />}
             {activeTab === 'Diff' && <DiffView />}
-            {activeTab === 'Grading' && <GradingView />}
+
             {activeTab === 'Branching' && <BranchPredictionView />}
           </div>
 

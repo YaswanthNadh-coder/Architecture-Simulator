@@ -1,4 +1,4 @@
-import { Play, BookOpen, BarChart3, Sparkles, Lock, FolderOpen, Code } from 'lucide-react';
+import { Play, BookOpen, BarChart3, Sparkles, Lock, FolderOpen, Code, GraduationCap } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { useNavigate } from 'react-router-dom';
@@ -41,7 +41,7 @@ export const DashboardPage = () => {
         </div>
 
         {/* Quick Start Grid */}
-        <div className="grid md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">
           <QuickStartCard 
             icon={<Code size={24} className="text-brand-400" />}
             title="New Simulation"
@@ -59,6 +59,12 @@ export const DashboardPage = () => {
             title="View Analytics"
             description="Track your performance and concept mastery over time."
             onClick={() => navigate('/analytics')}
+          />
+          <QuickStartCard 
+            icon={<GraduationCap size={24} className="text-purple-400" />}
+            title="Professor Tools"
+            description="Auto-grade assignments and check for structural plagiarism."
+            onClick={() => navigate('/grading')}
           />
         </div>
 
