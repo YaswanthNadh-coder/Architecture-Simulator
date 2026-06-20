@@ -5,11 +5,13 @@ import { PipelineCanvas } from '../pipeline/PipelineCanvas';
 import { RegisterFile } from '../inspector/RegisterFile';
 import { RightPanel } from '../inspector/RightPanel';
 import { ConsolePanel } from '../console/ConsolePanel';
-import { ChevronRight, Sparkles, FileCode2, Download, GraduationCap } from 'lucide-react';
+import { ChevronRight, Sparkles, FileCode2, Download, GraduationCap, Share2 } from 'lucide-react';
 import { useSimulatorStore } from '../../store/simulatorStore';
 import { assemble } from '../../engine/mipsParser';
 import { generateLogisimImage, generateVerilogMem } from '../../engine/exportUtils';
-import { TutorialOverlay } from './TutorialOverlay';
+import { detectShareParams, decodeFromURL, loadFromSupabase } from '../../engine/permalinkEncoder';
+import { TutorialSystem } from './TutorialSystem';
+import { ShareDialog } from './ShareDialog';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { UpgradeBanner } from '../monetization/UpgradeBanner';
@@ -40,7 +42,10 @@ export const SimulatorPage = () => {
   const [searchParams] = useSearchParams();
   const projectId = searchParams.get('project');
 
-  const { code, setCode, cycle, waitingForInput, stats, isFinished } = useSimulatorStore();
+  const {
+    code, setCode, cycle, waitingForInput, stats, isFinished,
+    setForwardingEnabled, setBranchPrediction, setISA, assemble: runAssemble
+  } = useSimulatorStore();
   const { tier } = useSubscriptionStore();
   const [activeTab, setActiveTab] = useState<TabView>('Pipeline');
   const [showConsole, setShowConsole] = useState(true);
@@ -51,7 +56,7 @@ export const SimulatorPage = () => {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
 
   const [showExportMenu, setShowExportMenu] = useState(false);
-  const [showTutorial, setShowTutorial] = useState(false);
+  const [showShareDialog, setShowShareDialog] = useState(false);
 
   const handleExport = (format: 'logisim' | 'verilog') => {
     const result = assemble(code);
@@ -82,6 +87,39 @@ export const SimulatorPage = () => {
   };
 
   useEffect(() => {
+    // 1. Check for share links
+    const shareParams = detectShareParams(searchParams);
+    
+    if (shareParams.type === 'code') {
+      const decoded = decodeFromURL(shareParams.value);
+      if (decoded) {
+        setProjectName('Shared Program (URL)');
+        setCode(decoded.code);
+        if (decoded.settings?.forwarding !== undefined) setForwardingEnabled(decoded.settings.forwarding);
+        if (decoded.settings?.branchPrediction) setBranchPrediction(decoded.settings.branchPrediction as 'always-taken' | 'not-taken');
+        if (decoded.settings?.isa) setISA(decoded.settings.isa);
+        setTimeout(() => runAssemble(), 100);
+      }
+      return;
+    }
+    
+    if (shareParams.type === 'share') {
+      loadFromSupabase(shareParams.value).then(program => {
+        if (program) {
+          setProjectName(program.title || `Shared by ${program.authorName || 'Unknown'}`);
+          setCode(program.code);
+          if (program.settings?.forwarding !== undefined) setForwardingEnabled(program.settings.forwarding);
+          if (program.settings?.branchPrediction) setBranchPrediction(program.settings.branchPrediction as 'always-taken' | 'not-taken');
+          if (program.settings?.isa) setISA(program.settings.isa);
+          setTimeout(() => runAssemble(), 100);
+        } else {
+          setProjectName('Shared Program (Not Found)');
+        }
+      });
+      return;
+    }
+
+    // 2. Load regular project
     if (projectId) {
       try {
         const projects: Project[] = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
@@ -102,7 +140,7 @@ export const SimulatorPage = () => {
       setProjectName('Scratchpad');
       setActiveProjectId(null);
     }
-  }, [projectId, setProjectName, setCode, setActiveProjectId]);
+  }, [projectId, searchParams, setProjectName, setCode, setActiveProjectId, setForwardingEnabled, setBranchPrediction, setISA, runAssemble]);
 
   useEffect(() => {
     if (activeProjectId === projectId && projectId) {
@@ -157,23 +195,8 @@ export const SimulatorPage = () => {
           )}
         </div>
 
-        {/* View tabs */}
+        {/* Navigation actions */}
         <nav className="flex items-center gap-1">
-          {(['Pipeline', 'Datapath', 'Timing', 'Memory', 'Cache', 'Diff', 'Branching'] as TabView[]).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-150 ${
-                activeTab === tab
-                  ? 'bg-brand-500/15 text-brand-400 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.3)]'
-                  : 'text-text-muted hover:text-white hover:bg-white/5'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
-          {/* Console toggle */}
-          <div className="w-px h-4 bg-border-subtle mx-1" />
           <button
             onClick={() => setShowConsole(!showConsole)}
             className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all duration-150 ${
@@ -185,10 +208,18 @@ export const SimulatorPage = () => {
             Console
           </button>
 
-          {/* Tutorial Button */}
+          {/* Share Button */}
           <div className="w-px h-4 bg-border-subtle mx-1" />
           <button
-            onClick={() => setShowTutorial(true)}
+            onClick={() => setShowShareDialog(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg text-brand-400 bg-brand-500/10 border border-brand-500/20 hover:bg-brand-500/20 transition-all"
+          >
+            <Share2 size={13} /> Share
+          </button>
+          
+          <div className="w-px h-4 bg-border-subtle mx-1" />
+          <button
+            onClick={() => navigate('/learn')}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-text-muted hover:text-white hover:bg-white/5 transition-all"
           >
             <GraduationCap size={13} /> Tutorial
@@ -252,9 +283,28 @@ export const SimulatorPage = () => {
         </div>
 
         {/* Center column — Multi-View Canvas + Register File */}
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 bg-bg-surface">
+          {/* View Tabs Bar (Moved from header to avoid clutter) */}
+          <div className="h-10 border-b border-border-subtle flex items-center px-6 shrink-0 bg-bg-surface">
+            <div className="flex items-center gap-1">
+              {(['Pipeline', 'Datapath', 'Timing', 'Memory', 'Cache', 'Diff', 'Branching'] as TabView[]).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all duration-150 cursor-pointer ${
+                    activeTab === tab
+                      ? 'bg-brand-500/15 text-brand-400 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.3)] font-bold'
+                      : 'text-text-muted hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Main Visual View */}
-          <div className={`flex-1 min-h-0 ${activeTab === 'Pipeline' ? 'pipeline-bg' : 'bg-bg-base'}`}>
+          <div className={`flex-1 min-h-0 flex flex-col overflow-hidden ${activeTab === 'Pipeline' ? 'pipeline-bg' : 'bg-bg-base'}`}>
             {activeTab === 'Pipeline' && <PipelineCanvas />}
             {activeTab === 'Datapath' && <DatapathView />}
             {activeTab === 'Timing' && <TimingView />}
@@ -329,7 +379,8 @@ export const SimulatorPage = () => {
         )}
       </AnimatePresence>
 
-      {showTutorial && <TutorialOverlay onClose={() => setShowTutorial(false)} />}
+      <TutorialSystem />
+      {showShareDialog && <ShareDialog onClose={() => setShowShareDialog(false)} />}
     </div>
   );
 };

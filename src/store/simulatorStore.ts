@@ -1,9 +1,10 @@
 import { create } from 'zustand';
 import { assemble, type ParsedInstruction, type ParseError } from '../engine/mipsParser';
+import { assembleRISCV } from '../engine/riscvParser';
 import { MIPSPipelineEngine, type PipelineSnapshot, type EngineStats, type DatapathValues } from '../engine/pipelineEngine';
 import { completeSyscallInput, SYSCALL } from '../engine/syscallHandler';
 import type { CacheConfig } from '../engine/cacheSimulator';
-import { logSimulationEvent } from '../services/activityService';
+import { logSimulationEvent, logSimulationCompletion } from '../services/activityService';
 
 // ── Re-export types for UI compatibility ─────────────────────────────────
 
@@ -95,12 +96,16 @@ interface SimulatorStore {
   // Blocked instructions (for assignment sandboxing)
   blockedInstructions: string[];
 
+  // ISA selection
+  isa: 'mips' | 'riscv';
+
   // Actions
   assemble: () => boolean;
   nextCycle: () => void;
   prevCycle: () => void;
   togglePlay: () => void;
   toggleForwarding: () => void;
+  setForwardingEnabled: (enabled: boolean) => void;
   setBranchPrediction: (strategy: 'not-taken' | 'always-taken') => void;
   setMemoryLatency: (latency: number) => void;
   setCacheConfig: (config: CacheConfig) => void;
@@ -112,6 +117,7 @@ interface SimulatorStore {
   submitConsoleInput: (input: string) => void;
   clearConsole: () => void;
   setBlockedInstructions: (blocked: string[]) => void;
+  setISA: (isa: 'mips' | 'riscv') => void;
   getEngine: () => MIPSPipelineEngine;
 }
 
@@ -257,16 +263,21 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
   pendingSyscallV0: 0,
 
   blockedInstructions: [],
+  isa: 'mips',
 
   getEngine: () => engine,
 
   setCode: (code) => set({ code, isAssembled: false }),
 
   assemble: () => {
-    const { code, forwardingEnabled, branchPrediction, memoryLatency, cacheConfig, blockedInstructions } = get();
-    const result = assemble(code, {
-      blockedInstructions: blockedInstructions.length > 0 ? blockedInstructions : undefined,
-    });
+    const { code, forwardingEnabled, branchPrediction, memoryLatency, cacheConfig, blockedInstructions, isa } = get();
+    const result = isa === 'riscv'
+      ? assembleRISCV(code, {
+          blockedInstructions: blockedInstructions.length > 0 ? blockedInstructions : undefined,
+        })
+      : assemble(code, {
+          blockedInstructions: blockedInstructions.length > 0 ? blockedInstructions : undefined,
+        });
 
     // Only block on actual errors, not warnings
     const hasErrors = result.errors.some(e => e.severity === 'error');
@@ -382,6 +393,11 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
       timerWorker.postMessage({ command: 'stop' });
     }
 
+    // Log rich completion event
+    if (snap.finished && !state.isFinished) {
+      logSimulationCompletion(snap.stats, state.forwardingEnabled).catch(() => {});
+    }
+
     if (snap.finished && snap.terminationReason === 'max_cycles_reached') {
       newConsoleOutput.push(`\n[Program terminated: Maximum cycle limit (${engine.maxCycles}) reached. Possible infinite loop.]`);
     }
@@ -453,6 +469,15 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
     }
   },
 
+  setForwardingEnabled: (enabled) => {
+    const state = get();
+    engine.forwardingEnabled = enabled;
+    set({ forwardingEnabled: enabled });
+    if (state.isAssembled) {
+      get().assemble();
+    }
+  },
+
   setBranchPrediction: (strategy) => {
     engine.branchPrediction = strategy;
     set({ branchPrediction: strategy });
@@ -471,13 +496,17 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
     if (get().isAssembled) get().assemble();
   },
 
+  setISA: (isa) => {
+    set({ isa, isAssembled: false });
+  },
+
   reset: () => {
     timerWorker.postMessage({ command: 'stop' });
     const state = get();
     if (state.isAssembled && state.instructions.length > 0) {
       engine.loadProgram(state.instructions);
       // Re-load data segment from last assembly
-      const result = assemble(state.code);
+      const result = state.isa === 'riscv' ? assembleRISCV(state.code) : assemble(state.code);
       engine.loadDataSegment(result.dataSegment);
       const snap = engine.getSnapshot();
       set({
