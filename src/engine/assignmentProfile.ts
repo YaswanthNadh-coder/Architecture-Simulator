@@ -6,6 +6,7 @@ export interface TestCase {
     memory?: Record<number, number>;
     registers?: Record<string, number>;
     console?: string[];
+    code?: string; // Optional input code to prepend
   };
   expected: {
     memory?: Record<number, number>;
@@ -21,13 +22,17 @@ export interface AssignmentProfile {
   id: string;
   title: string;
   description: string;
+  specification?: string;          // Rich markdown specification text
   difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
   starterCode: string;
+  blockedInstructions?: string[];  // Instructions students cannot use
+  dueDate?: string;                // ISO date string
+  timeLimit?: number;              // Time limit in minutes
   testCases: TestCase[];
   rubric: {
-    correctness: number; // weight of passing test cases
-    efficiency: number;  // weight of cycle count / stalls
-    style: number;       // weight of comments / formatting
+    correctness: number;
+    efficiency: number;
+    style: number;
   };
 }
 

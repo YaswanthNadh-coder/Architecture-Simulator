@@ -9,7 +9,9 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAssignmentStore } from '../../store/assignmentStore';
+import { useAuthStore } from '../../store/authStore';
 import { AssignmentBuilder } from './AssignmentBuilder';
+import { useEffect } from 'react';
 
 interface BatchEntry {
   filename: string;
@@ -39,8 +41,20 @@ export const GradingPage = () => {
 
   // Active tab
   const [activeSection, setActiveSection] = useState<'single' | 'batch' | 'plagiarism' | 'builder'>('single');
+  const [editingAssignmentId, setEditingAssignmentId] = useState<string | null>(null);
 
-  const { customAssignments } = useAssignmentStore();
+  const { profile } = useAuthStore();
+  const { 
+    customAssignments, addAssignment, updateAssignment, deleteAssignment, duplicateAssignment, 
+    syncing, lastSyncError, loadFromSupabase 
+  } = useAssignmentStore();
+  
+  useEffect(() => {
+    if (profile) {
+      loadFromSupabase();
+    }
+  }, [profile, loadFromSupabase]);
+
   const allAssignments = [...ASSIGNMENTS, ...customAssignments];
   const assignment = allAssignments.find(a => a.id === selectedAssignment) || allAssignments[0];
 
@@ -166,6 +180,18 @@ export const GradingPage = () => {
               </optgroup>
             )}
           </select>
+
+          {profile && (
+            <div className="flex items-center gap-2 text-xs text-text-muted">
+              {syncing ? (
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse" /> Syncing...</span>
+              ) : lastSyncError ? (
+                <span className="flex items-center gap-1 text-red-400"><AlertTriangle size={12} /> Sync Error</span>
+              ) : (
+                <span className="flex items-center gap-1 text-emerald-400"><CheckCircle2 size={12} /> Synced</span>
+              )}
+            </div>
+          )}
         </div>
       </header>
 
@@ -186,9 +212,48 @@ export const GradingPage = () => {
             </span>
           </div>
           <div className="flex items-center gap-6">
-            <RubricBadge label="Correctness" weight={assignment.rubric.correctness} />
-            <RubricBadge label="Efficiency" weight={assignment.rubric.efficiency} />
-            <RubricBadge label="Style" weight={assignment.rubric.style} />
+            <div className="flex items-center gap-4 border-r border-border-subtle pr-6">
+              <RubricBadge label="Correctness" weight={assignment.rubric.correctness} />
+              <RubricBadge label="Efficiency" weight={assignment.rubric.efficiency} />
+              <RubricBadge label="Style" weight={assignment.rubric.style} />
+            </div>
+
+            <div className="flex items-center gap-2">
+              {customAssignments.some(a => a.id === selectedAssignment) ? (
+                <>
+                  <button
+                    onClick={() => {
+                      setEditingAssignmentId(selectedAssignment);
+                      setActiveSection('builder');
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg text-brand-400 bg-brand-500/10 border border-brand-500/20 hover:bg-brand-500/20 transition-all cursor-pointer"
+                  >
+                    <Wrench size={12} /> Edit
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (confirm('Are you sure you want to delete this custom assignment?')) {
+                        deleteAssignment(selectedAssignment);
+                        setSelectedAssignment(ASSIGNMENTS[0].id);
+                      }
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg text-red-400 bg-red-500/10 border border-red-500/20 hover:bg-red-500/20 transition-all cursor-pointer"
+                  >
+                    <Trash2 size={12} /> Delete
+                  </button>
+                </>
+              ) : null}
+
+              <button
+                onClick={() => {
+                  duplicateAssignment(selectedAssignment);
+                  alert('Assignment duplicated! You can find it under "My Custom Library" in the dropdown menu at the top.');
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg text-text-muted hover:text-white bg-white/5 border border-border-subtle hover:border-text-muted transition-all cursor-pointer"
+              >
+                <Upload size={12} className="rotate-180" /> Duplicate / Customize
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -204,7 +269,12 @@ export const GradingPage = () => {
           ] as const).map(tab => (
             <button
               key={tab.id}
-              onClick={() => setActiveSection(tab.id)}
+              onClick={() => {
+                setActiveSection(tab.id);
+                if (tab.id === 'builder') {
+                  setEditingAssignmentId(null);
+                }
+              }}
               className={`flex items-center gap-2 px-4 py-3 text-xs font-medium border-b-2 transition-all ${
                 activeSection === tab.id
                   ? 'text-brand-400 border-brand-500'
@@ -266,10 +336,21 @@ export const GradingPage = () => {
 
           {activeSection === 'builder' && (
             <motion.div key="builder" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
-              <AssignmentBuilder onSelectAssignment={(id) => {
-                setSelectedAssignment(id);
-                setActiveSection('single');
-              }} />
+              <AssignmentBuilder 
+                initial={editingAssignmentId ? allAssignments.find(a => a.id === editingAssignmentId) : undefined}
+                onSave={(newAssig) => {
+                  const exists = customAssignments.some(a => a.id === newAssig.id);
+                  if (exists) updateAssignment(newAssig);
+                  else addAssignment(newAssig);
+                  setSelectedAssignment(newAssig.id);
+                  setActiveSection('single');
+                  setEditingAssignmentId(null);
+                }}
+                onCancel={() => {
+                  setActiveSection('single');
+                  setEditingAssignmentId(null);
+                }}
+              />
             </motion.div>
           )}
         </AnimatePresence>

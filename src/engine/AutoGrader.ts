@@ -72,8 +72,11 @@ export class AutoGrader {
     engine.forwardingEnabled = useForwarding;
     engine.loadProgram(assemblyResult.instructions);
     engine.loadDataSegment(assemblyResult.dataSegment);
-    while (!engine.isFinished()) {
+    let metricsCycles = 0;
+    const MAX_CYCLES = 10000;
+    while (!engine.isFinished() && metricsCycles < MAX_CYCLES) {
       engine.step();
+      metricsCycles++;
     }
     const stats = engine.getSnapshot().stats;
     report.cycles = stats.totalCycles;
