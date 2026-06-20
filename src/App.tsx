@@ -1,10 +1,13 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
 import { useAuthStore } from './store/authStore';
+import { useTutorialStore } from './store/tutorialStore';
 
 // Layout & Auth
 import { AppShell } from './components/layout/AppShell';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import { RoleRoute } from './components/auth/RoleRoute';
+import { TierRoute } from './components/auth/TierRoute';
 import { LoginPage } from './components/auth/LoginPage';
 import { RegisterPage } from './components/auth/RegisterPage';
 
@@ -17,13 +20,24 @@ import { SettingsPage } from './components/settings/SettingsPage';
 import { PricingPage } from './components/pricing/PricingPage';
 import { AnalyticsPage } from './components/analytics/AnalyticsPage';
 import { GradingPage } from './components/grading/GradingPage';
+import { LearnPage } from './components/views/LearnPage';
 
 function App() {
   const { initialize } = useAuthStore();
+  const { isActive } = useTutorialStore();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     initialize();
   }, [initialize]);
+
+  // Handle tutorial navigation
+  useEffect(() => {
+    if (isActive && location.pathname !== '/simulator') {
+      navigate('/simulator');
+    }
+  }, [isActive, location.pathname, navigate]);
 
   return (
     <Routes>
@@ -32,15 +46,36 @@ function App() {
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/pricing" element={<PricingPage />} />
 
-      {/* Protected Routes inside AppShell */}
+      {/* All authenticated routes inside ProtectedRoute > AppShell */}
       <Route element={<ProtectedRoute><AppShell /></ProtectedRoute>}>
+
+        {/* Available to all authenticated users regardless of tier */}
         <Route path="/" element={<DashboardPage />} />
         <Route path="/simulator" element={<SimulatorPage />} />
         <Route path="/files" element={<FilesPage />} />
         <Route path="/activity" element={<ActivityPage />} />
         <Route path="/settings" element={<SettingsPage />} />
-        <Route path="/analytics" element={<AnalyticsPage />} />
-        <Route path="/grading" element={<GradingPage />} />
+        <Route path="/learn" element={<LearnPage />} />
+
+        {/* Requires Pro or above — redirect to /pricing if not met */}
+        <Route
+          path="/analytics"
+          element={
+            <TierRoute requiredFeature="analyticsDashboard">
+              <AnalyticsPage />
+            </TierRoute>
+          }
+        />
+
+        {/* Requires instructor role — redirect to / if student tries to access */}
+        <Route
+          path="/grading"
+          element={
+            <RoleRoute allowedRoles={['instructor']}>
+              <GradingPage />
+            </RoleRoute>
+          }
+        />
       </Route>
 
       {/* Fallback */}

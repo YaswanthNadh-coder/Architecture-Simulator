@@ -1,71 +1,28 @@
 import { CheckCircle2, Circle, AlertTriangle, BookOpen } from 'lucide-react';
-
-interface Concept {
-  id: string;
-  name: string;
-  description: string;
-  exercised: number;
-  mastered: boolean;
-  icon: string;
-  weakSpot?: string;
-}
-
-const CONCEPTS: Concept[] = [
-  {
-    id: 'data_hazards',
-    name: 'Data Hazards',
-    description: 'Read-After-Write (RAW) dependencies between instructions',
-    exercised: 24,
-    mastered: true,
-    icon: '⚡',
-  },
-  {
-    id: 'forwarding',
-    name: 'Data Forwarding',
-    description: 'Bypass paths that eliminate stalls from data hazards',
-    exercised: 18,
-    mastered: true,
-    icon: '🔄',
-  },
-  {
-    id: 'branch_penalties',
-    name: 'Branch Penalties',
-    description: 'Pipeline flushes caused by mispredicted branches',
-    exercised: 9,
-    mastered: false,
-    icon: '🎯',
-    weakSpot: 'Your branch-heavy code frequently triggers flushes. Try reordering instructions to reduce branch density.',
-  },
-  {
-    id: 'cache_misses',
-    name: 'Cache Miss Penalties',
-    description: 'Memory stalls from cache misses in the hierarchy',
-    exercised: 3,
-    mastered: false,
-    icon: '📦',
-    weakSpot: 'You haven\'t explored cache configurations much. Try varying cache size and associativity to see the impact on CPI.',
-  },
-  {
-    id: 'structural_hazards',
-    name: 'Structural Hazards',
-    description: 'Resource conflicts when multiple instructions need the same hardware',
-    exercised: 6,
-    mastered: false,
-    icon: '🏗️',
-  },
-  {
-    id: 'load_use',
-    name: 'Load-Use Dependencies',
-    description: 'Stalls caused by using data immediately after a load instruction',
-    exercised: 15,
-    mastered: true,
-    icon: '📥',
-  },
-];
+import { useState, useEffect } from 'react';
+import { getConceptMasteryData, type ConceptMasteryData } from '../../services/activityService';
+import { useAuthStore } from '../../store/authStore';
 
 export const ConceptMastery = () => {
-  const masteredCount = CONCEPTS.filter(c => c.mastered).length;
-  const weakSpots = CONCEPTS.filter(c => c.weakSpot);
+  const { profile } = useAuthStore();
+  const [concepts, setConcepts] = useState<ConceptMasteryData[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (profile) {
+      getConceptMasteryData(profile.id).then(({ concepts }) => {
+        setConcepts(concepts);
+        setLoading(false);
+      });
+    } else {
+      setLoading(false);
+    }
+  }, [profile]);
+
+  if (loading) return <div className="text-text-muted">Loading concepts...</div>;
+
+  const masteredCount = concepts.filter(c => c.mastered).length;
+  const weakSpots = concepts.filter(c => c.weakSpot);
 
   return (
     <div className="space-y-6">
@@ -74,12 +31,12 @@ export const ConceptMastery = () => {
         <div className="flex-1">
           <div className="flex justify-between mb-1.5">
             <span className="text-xs text-text-muted">Mastery Progress</span>
-            <span className="text-xs text-white font-medium">{masteredCount} / {CONCEPTS.length}</span>
+            <span className="text-xs text-white font-medium">{masteredCount} / {concepts.length}</span>
           </div>
           <div className="w-full h-2 bg-bg-base rounded-full overflow-hidden">
             <div
               className="h-full bg-gradient-to-r from-brand-500 to-emerald-500 rounded-full transition-all"
-              style={{ width: `${(masteredCount / CONCEPTS.length) * 100}%` }}
+              style={{ width: `${concepts.length > 0 ? (masteredCount / concepts.length) * 100 : 0}%` }}
             />
           </div>
         </div>
@@ -87,7 +44,7 @@ export const ConceptMastery = () => {
 
       {/* Concept cards */}
       <div className="grid gap-3">
-        {CONCEPTS.map(concept => (
+        {concepts.map(concept => (
           <div
             key={concept.id}
             className={`rounded-xl border p-4 transition-all ${

@@ -1,6 +1,7 @@
 import Editor, { type OnMount } from '@monaco-editor/react';
 import { useSimulatorStore } from '../../store/simulatorStore';
-import { assemble } from '../../engine/mipsParser';
+import { assemble as mipsAssemble } from '../../engine/mipsParser';
+import { assembleRISCV as riscvAssemble } from '../../engine/riscvParser';
 import { Play, Pause, SkipForward, SkipBack, RotateCcw, Zap } from 'lucide-react';
 import { useEffect, useRef, useCallback } from 'react';
 import type * as Monaco from 'monaco-editor';
@@ -17,6 +18,9 @@ const MIPS_KEYWORDS = [
   'mfhi','mflo','lui','la','li','move','nop',
   'syscall','break',
   'blt','bge','bgt','ble',
+  // RISC-V specific additions
+  'auipc','bltu','bgeu','slli','srli','srai','mv','not','neg','sext.w',
+  'seqz','snez','sltz','sgtz','ret','call','tail','bleu','bgtu','beqz','bnez'
 ];
 
 const DIRECTIVES = ['.data','.text','.word','.byte','.half','.asciiz','.ascii','.space','.globl','.align'];
@@ -269,12 +273,12 @@ const handleEditorMount: OnMount = (_editor, monaco) => {
 
 // ── Real-time Linting ────────────────────────────────────────────────────
 
-function runLinting(code: string) {
+function runLinting(code: string, isa: 'mips' | 'riscv') {
   if (!monacoInstance || !editorInstance) return;
   const model = editorInstance.getModel();
   if (!model) return;
 
-  const result = assemble(code);
+  const result = isa === 'riscv' ? riscvAssemble(code) : mipsAssemble(code);
   const markers: Monaco.editor.IMarkerData[] = result.errors.map(err => ({
     severity: err.severity === 'error'
       ? monacoInstance!.MarkerSeverity.Error
@@ -297,7 +301,7 @@ function runLinting(code: string) {
 export const MipsEditor = () => {
   const {
     code, setCode, cycle, nextCycle, prevCycle, isPlaying, togglePlay,
-    reset, assemble: doAssemble, parseErrors, isAssembled, isFinished, speed, setSpeed
+    reset, assemble: doAssemble, parseErrors, isAssembled, isFinished, speed, setSpeed, isa
   } = useSimulatorStore();
 
   const lintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -309,9 +313,9 @@ export const MipsEditor = () => {
 
     if (lintTimerRef.current) clearTimeout(lintTimerRef.current);
     lintTimerRef.current = setTimeout(() => {
-      runLinting(newCode);
+      runLinting(newCode, isa);
     }, 400);
-  }, [setCode]);
+  }, [setCode, isa]);
 
   // Clean up lint timer
   useEffect(() => {
@@ -324,9 +328,9 @@ export const MipsEditor = () => {
 
   // Initial lint on mount
   useEffect(() => {
-    const timer = setTimeout(() => runLinting(initialCodeRef.current), 500);
+    const timer = setTimeout(() => runLinting(initialCodeRef.current, isa), 500);
     return () => clearTimeout(timer);
-  }, []);
+  }, [isa]);
 
   return (
     <div className="flex flex-col h-full bg-bg-surface border-r border-border-subtle">
