@@ -1,5 +1,6 @@
 import Editor, { type OnMount } from '@monaco-editor/react';
 import { useSimulatorStore } from '../../store/simulatorStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import { assemble as mipsAssemble } from '../../engine/mipsParser';
 import { assembleRISCV as riscvAssemble } from '../../engine/riscvParser';
 import { Play, Pause, SkipForward, SkipBack, RotateCcw, Zap } from 'lucide-react';
@@ -304,6 +305,8 @@ export const MipsEditor = () => {
     reset, assemble: doAssemble, parseErrors, isAssembled, isFinished, speed, setSpeed, isa
   } = useSimulatorStore();
 
+  const { fontSize } = useSettingsStore();
+
   const lintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Debounced linting
@@ -365,7 +368,7 @@ export const MipsEditor = () => {
           options={{
             readOnly: isPlaying,
             minimap: { enabled: false },
-            fontSize: 13,
+            fontSize: parseInt(fontSize) || 13,
             fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
             fontLigatures: true,
             lineHeight: 22,

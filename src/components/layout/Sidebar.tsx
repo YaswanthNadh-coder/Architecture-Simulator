@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Box, FileCode2, ActivitySquare, CreditCard, Settings, LogOut, BarChart3, Lock, Sparkles } from 'lucide-react';
+import { LayoutDashboard, Box, FileCode2, ActivitySquare, CreditCard, Settings, LogOut, BarChart3, Lock, Sparkles, BookOpen, GraduationCap } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 
@@ -8,6 +8,8 @@ export const Sidebar = () => {
   const { profile, logout } = useAuthStore();
   const { tier, canAccess } = useSubscriptionStore();
   
+  const isInstructor = profile?.role === 'instructor';
+
   // Extract initials for the avatar
   const initials = profile?.full_name 
     ? profile.full_name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()
@@ -15,6 +17,7 @@ export const Sidebar = () => {
 
   const navItems = [
     { icon: <LayoutDashboard size={22} />, path: '/', label: 'Dashboard' },
+    { icon: <BookOpen size={22} />, path: '/learn', label: 'Learn' },
     { icon: <Box size={22} />, path: '/simulator', label: 'Simulator' },
     { icon: <FileCode2 size={22} />, path: '/files', label: 'Projects' },
     { icon: <ActivitySquare size={22} />, path: '/activity', label: 'Activity' },
@@ -24,6 +27,12 @@ export const Sidebar = () => {
       label: 'Analytics',
       locked: !canAccess('analyticsDashboard'),
     },
+    // Only show grading link for instructors
+    ...(isInstructor ? [{
+      icon: <GraduationCap size={22} />,
+      path: '/grading',
+      label: 'Grading',
+    }] : []),
   ];
 
   const bottomItems = [

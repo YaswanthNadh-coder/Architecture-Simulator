@@ -18,7 +18,7 @@ interface AuthStore {
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   fetchProfile: (id: string) => Promise<void>;
-  updateProfile: (updates: Partial<Pick<Profile, 'full_name' | 'role'>>) => Promise<{ error: string | null }>;
+  updateProfile: (updates: Partial<Pick<Profile, 'full_name'>>) => Promise<{ error: string | null }>;
   clearError: () => void;
 }
 
@@ -47,14 +47,44 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         authUnsubscribe();
         authUnsubscribe = null;
       }
-      // Subscribe to auth changes
-      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-        if (session?.user) {
+
+      // Track whether the first event has been handled to avoid double-fetching.
+      // getSession() above already handled the initial session, so we skip the
+      // first SIGNED_IN / INITIAL_SESSION event from onAuthStateChange.
+      let initialEventHandled = !!session?.user;
+
+      // Subscribe to auth changes — more specific event handling
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === 'SIGNED_OUT') {
+          initialEventHandled = false;
+          set({ user: null, profile: null, isAuthenticated: false, isEdu: false, error: null });
+          return;
+        }
+
+        // Skip the initial SIGNED_IN that duplicates the getSession() call above
+        if (event === 'INITIAL_SESSION') {
+          return;
+        }
+
+        if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user) {
+          if (event === 'SIGNED_IN' && initialEventHandled) {
+            // Already handled during initialization — skip this duplicate
+            initialEventHandled = false;
+            return;
+          }
+          initialEventHandled = false;
           const isEdu = isEduEmail(session.user.email ?? '');
-          set({ user: session.user, isAuthenticated: true, isEdu });
-          await get().fetchProfile(session.user.id);
-        } else {
-          set({ user: null, profile: null, isAuthenticated: false, isEdu: false });
+          set({ user: session.user, isAuthenticated: true, isEdu, error: null });
+          // Skip fetchProfile if login() already loaded it
+          if (!get().profile) {
+            await get().fetchProfile(session.user.id);
+          }
+        }
+
+        // TOKEN_REFRESHED — update user object but don't re-fetch profile
+        // to avoid unnecessary re-renders and Supabase calls
+        if (event === 'TOKEN_REFRESHED' && session?.user) {
+          set({ user: session.user });
         }
       });
       authUnsubscribe = () => subscription.unsubscribe();
@@ -67,12 +97,20 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
   login: async (email, password) => {
     set({ loading: true, error: null });
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    set({ loading: false });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
-      set({ error: error.message });
+      set({ error: error.message, loading: false });
       return { error: error.message };
     }
+    // Set auth state immediately from the response — don't wait for
+    // onAuthStateChange which fires asynchronously and causes a race
+    // with navigate('/') in handleSubmit.
+    if (data.user) {
+      const edu = isEduEmail(data.user.email ?? '');
+      set({ user: data.user, isAuthenticated: true, isEdu: edu });
+      await get().fetchProfile(data.user.id);
+    }
+    set({ loading: false });
     return { error: null };
   },
 
@@ -105,8 +143,13 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   logout: async () => {
-    await supabase.auth.signOut();
-    set({ user: null, profile: null, isAuthenticated: false, isEdu: false });
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.warn('Signout network error:', e);
+    } finally {
+      set({ user: null, profile: null, isAuthenticated: false, isEdu: false });
+    }
   },
 
   fetchProfile: async (id: string) => {
@@ -115,7 +158,90 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       .select('*')
       .eq('id', id)
       .single();
-    if (!error && data) {
+
+    if (error) {
+      // ── Table doesn't exist yet (PGRST205) or profile row missing (PGRST116) ──
+      // Both cases mean the DB migration hasn't been run or the trigger didn't fire.
+      // Instead of logging the user out and showing a scary error, create a
+      // client-side fallback profile so the app is fully usable.
+      const isTableMissing = error.code === 'PGRST205';
+      const isRowMissing = error.code === 'PGRST116';
+
+      if (isRowMissing) {
+        // Try creating the profile via RPC (works if the table exists but the row doesn't)
+        try {
+          const { data: authData } = await supabase.auth.getUser();
+          const { data: newProfile, error: rpcError } = await supabase.rpc('create_my_profile', {
+            p_full_name: authData.user?.user_metadata?.full_name ?? null
+          });
+
+          if (newProfile && !rpcError) {
+            const profile = {
+              tier: 'free',
+              subscription_status: 'active',
+              billing_interval: null,
+              trial_ends_at: null,
+              current_period_end: null,
+              cancel_at_period_end: false,
+              is_student_discount: false,
+              stripe_customer_id: null,
+              seat_count: null,
+              institution_id: null,
+              program_count: 0,
+              ...newProfile,
+            } as Profile;
+            set({ profile });
+            useSubscriptionStore.getState().initFromProfile(profile);
+            return;
+          }
+          // RPC failed — fall through to local fallback below
+          console.warn('create_my_profile RPC failed:', rpcError?.message);
+        } catch (rpcErr) {
+          console.warn('create_my_profile RPC threw:', rpcErr);
+        }
+      }
+
+      if (isTableMissing || isRowMissing) {
+        // ── Local fallback profile ──
+        // The DB isn't set up yet, but the user has a valid Supabase auth session.
+        // Build a synthetic profile from auth metadata so they can use the app.
+        console.warn(
+          `Profile table/row not available (${error.code}). ` +
+          'Using local fallback profile. Run schema_setup.sql in the Supabase SQL editor to fix.'
+        );
+        const { data: authData } = await supabase.auth.getUser();
+        const meta = authData.user?.user_metadata ?? {};
+        const fallbackProfile: Profile = {
+          id,
+          full_name: meta.full_name ?? meta.name ?? authData.user?.email?.split('@')[0] ?? 'User',
+          role: (meta.role as 'student' | 'instructor') ?? 'student',
+          avatar_url: meta.avatar_url ?? null,
+          created_at: authData.user?.created_at ?? new Date().toISOString(),
+          tier: 'free',
+          subscription_status: 'active',
+          billing_interval: null,
+          trial_ends_at: null,
+          current_period_end: null,
+          cancel_at_period_end: false,
+          is_student_discount: false,
+          stripe_customer_id: null,
+          seat_count: null,
+          institution_id: null,
+          program_count: 0,
+        };
+        set({ profile: fallbackProfile });
+        useSubscriptionStore.getState().initFromProfile(fallbackProfile);
+        return;
+      }
+
+      // ── Genuinely unexpected error — log out cleanly ──
+      console.error('Failed to load profile:', error);
+      await get().logout();
+      set({ error: `Profile Error: ${error.message} (Code: ${error.code}). Please try again.` });
+      return;
+    }
+
+    if (data) {
       // Provide defaults for subscription fields that may not exist in DB yet
       const profile: Profile = {
         tier: 'free',
@@ -137,18 +263,34 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     }
   },
 
+  // updateProfile — only allows safe fields (full_name).
+  // Role and tier are NOT updateable from the client.
+  // Uses Supabase RPC when available, with fallback to direct update
+  // for fields that RLS allows.
   updateProfile: async (updates) => {
     const { user } = get();
     if (!user) return { error: 'Not authenticated' };
-    const { error } = await supabase
-      .from('profiles')
-      .update(updates)
-      .eq('id', user.id);
-    if (!error) {
-      const current = get().profile;
-      if (current) set({ profile: { ...current, ...updates } });
+
+    // Try the safe RPC function first
+    const { error: rpcError } = await supabase.rpc('update_own_profile', {
+      p_full_name: updates.full_name ?? null,
+      p_avatar_url: null,
+    });
+
+    if (rpcError) {
+      // RPC might not exist yet during migration — fall back to direct update
+      // of safe fields only. RLS policies will block tier/role changes.
+      console.warn('update_own_profile RPC failed, falling back to direct update:', rpcError.message);
+      const { error } = await supabase
+        .from('profiles')
+        .update({ full_name: updates.full_name })
+        .eq('id', user.id);
+      if (error) return { error: error.message };
     }
-    return { error: error?.message ?? null };
+
+    const current = get().profile;
+    if (current) set({ profile: { ...current, ...updates } });
+    return { error: null };
   },
 
   clearError: () => set({ error: null }),

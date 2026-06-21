@@ -1,26 +1,11 @@
-import { useState, useCallback } from 'react';
-import { FileCode2, Plus, Clock, Trash2, FolderOpen, Lock } from 'lucide-react';
+import { useState, useCallback, useEffect } from 'react';
+import { FileCode2, Plus, Clock, Trash2, FolderOpen, Lock, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useAuthStore } from '../../store/authStore';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { ProgramLimitGate } from '../monetization/ProgramLimitGate';
-
-const STORAGE_KEY = 'archsim_projects';
-
-interface Project {
-  id: string;
-  name: string;
-  code: string;
-  modified: string;
-}
-
-const getProjects = (): Project[] => {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
-  catch { return []; }
-};
-
-const saveProjects = (projects: Project[]) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
-};
+import { projectService } from '../../services/projectService';
+import type { Project } from '../../lib/supabase';
 
 const DEFAULT_CODE = `.data
   result: .word 0
@@ -39,31 +24,70 @@ const DEFAULT_CODE = `.data
 
 export const FilesPage = () => {
   const navigate = useNavigate();
-  const [projects, setProjects] = useState<Project[]>(getProjects);
-  const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
-  const { capabilities } = useSubscriptionStore();
+  const { profile } = useAuthStore();
+  const { capabilities, programCount } = useSubscriptionStore();
 
-  const doCreateProject = useCallback(() => {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+
+  // Fetch projects from Supabase on mount
+  useEffect(() => {
+    if (!profile) return;
+
+    const loadProjects = async () => {
+      setLoading(true);
+      setError(null);
+      const { data, error: fetchError } = await projectService.list(profile.id);
+      if (fetchError) {
+        setError(fetchError);
+      } else {
+        setProjects(data);
+      }
+      setLoading(false);
+    };
+
+    loadProjects();
+  }, [profile]);
+
+  const doCreateProject = useCallback(async () => {
+    if (!profile) return;
     const name = prompt('Project name:', `Untitled Project ${projects.length + 1}`);
     if (!name) return;
-    const newProject: Project = {
-      id: crypto.randomUUID(),
-      name,
-      code: DEFAULT_CODE,
-      modified: new Date().toISOString(),
-    };
-    const updated = [newProject, ...projects];
-    saveProjects(updated);
-    setProjects(updated);
-  }, [projects]);
 
-  const deleteProject = useCallback((id: string) => {
+    const { data: newProject, error: createError } = await projectService.create(
+      profile.id,
+      name,
+      DEFAULT_CODE
+    );
+
+    if (createError) {
+      if (createError === 'program_limit_reached') {
+        // ProgramLimitGate should have caught this, but handle it anyway
+        return;
+      }
+      setError(createError);
+      return;
+    }
+
+    if (newProject) {
+      setProjects(prev => [newProject, ...prev]);
+    }
+  }, [profile, projects.length]);
+
+  const deleteProject = useCallback(async (id: string) => {
+    if (!profile) return;
     if (!window.confirm('Are you sure you want to delete this project?')) return;
-    const updated = projects.filter(p => p.id !== id);
-    saveProjects(updated);
-    setProjects(updated);
+
+    const { error: deleteError } = await projectService.delete(id, profile.id);
+    if (deleteError) {
+      setError(deleteError);
+    } else {
+      setProjects(prev => prev.filter(p => p.id !== id));
+    }
     setContextMenu(null);
-  }, [projects]);
+  }, [profile]);
 
   const formatDate = (iso: string) => {
     try {
@@ -82,8 +106,24 @@ export const FilesPage = () => {
 
   const maxPrograms = capabilities.maxPrograms;
   const isLimited = maxPrograms !== -1;
-  const atLimit = isLimited && projects.length >= maxPrograms;
-  const nearLimit = isLimited && projects.length >= maxPrograms - 2 && !atLimit;
+  // Use server-side program count from profile, NOT local array length
+  const currentCount = programCount;
+  const atLimit = isLimited && currentCount >= maxPrograms;
+  const nearLimit = isLimited && currentCount >= maxPrograms - 2 && !atLimit;
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="flex-1 overflow-auto bg-bg-base p-8">
+        <div className="max-w-5xl mx-auto">
+          <div className="flex flex-col items-center justify-center py-24">
+            <Loader2 size={32} className="text-brand-500 animate-spin mb-4" />
+            <p className="text-text-muted text-sm">Loading projects…</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 overflow-auto bg-bg-base p-8" onClick={() => setContextMenu(null)}>
@@ -101,12 +141,12 @@ export const FilesPage = () => {
                     ? 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400'
                     : 'bg-bg-panel border-border-subtle text-text-muted'
               }`}>
-                {projects.length} / {maxPrograms} programs
+                {currentCount} / {maxPrograms} programs
               </span>
             )}
           </div>
 
-          <ProgramLimitGate currentCount={projects.length} onAllow={doCreateProject}>
+          <ProgramLimitGate currentCount={currentCount} onAllow={doCreateProject}>
             {(handleCreate) => (
               <button
                 onClick={handleCreate}
@@ -122,6 +162,20 @@ export const FilesPage = () => {
             )}
           </ProgramLimitGate>
         </div>
+
+        {/* Error banner */}
+        {error && (
+          <div className="mb-6 px-4 py-3 rounded-xl bg-hazard/5 border border-hazard/20 flex items-center gap-3">
+            <span className="text-hazard text-xs">⚠️</span>
+            <p className="text-xs text-hazard/80 flex-1">{error}</p>
+            <button
+              onClick={() => setError(null)}
+              className="text-hazard/60 hover:text-hazard text-xs"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {/* Near-limit warning */}
         {nearLimit && (
@@ -140,7 +194,7 @@ export const FilesPage = () => {
             </div>
             <h2 className="text-xl font-bold text-white mb-2">No projects yet</h2>
             <p className="text-text-muted text-sm mb-6 max-w-sm">Create your first MIPS assembly project to get started with the pipeline simulator.</p>
-            <ProgramLimitGate currentCount={projects.length} onAllow={doCreateProject}>
+            <ProgramLimitGate currentCount={currentCount} onAllow={doCreateProject}>
               {(handleCreate) => (
                 <button
                   onClick={handleCreate}
@@ -174,7 +228,7 @@ export const FilesPage = () => {
                   </button>
                 </div>
                 <p className="text-xs text-text-muted flex items-center gap-1 mb-4">
-                  <Clock size={12} /> {formatDate(proj.modified)}
+                  <Clock size={12} /> {formatDate(proj.updated_at)}
                 </p>
                 
                 <div className="flex items-center gap-3">

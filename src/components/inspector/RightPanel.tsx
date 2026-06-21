@@ -1,4 +1,4 @@
-import { ExternalLink, AlertTriangle, Zap, Cpu, BookOpen } from 'lucide-react';
+import { AlertTriangle, Zap, Cpu } from 'lucide-react';
 import { useSimulatorStore } from '../../store/simulatorStore';
 import { ISAReference } from './ISAReference';
 import { CPIBreakdownChart } from './CPIBreakdownChart';
@@ -7,7 +7,7 @@ import { useState } from 'react';
 
 export const RightPanel = () => {
   const [activeTab, setActiveTab] = useState<'sim' | 'isa'>('sim');
-  const { cycle, pipeline, forwardingEnabled, toggleForwarding, stats } = useSimulatorStore();
+  const { cycle, pipeline, forwardingEnabled, toggleForwarding, stats, isa } = useSimulatorStore();
 
   // Derive active hazards from current pipeline state
   const hazardStages = Object.entries(pipeline).filter(([, s]) => s.status === 'hazard');
@@ -119,7 +119,7 @@ export const RightPanel = () => {
       </div>
 
       {/* ── Config ──────────────────────────────────────────── */}
-      <Section title="Config" icon={<Cpu size={13} className="text-text-muted" />}>
+      <Section title="Config" icon={<Cpu size={13} className="text-text-muted" />} last>
         <div className="flex flex-col gap-2.5">
 
           {/* Forwarding toggle */}
@@ -142,49 +142,11 @@ export const RightPanel = () => {
           <ConfigRow label="Branch predict" value="Not taken" />
           <ConfigRow label="Cache sim"     value="Off" />
           <ConfigRow label="Delay slots"   value="Off" />
-          <ConfigRow label="ISA"           value="MIPS I" />
+          <ConfigRow label="ISA"           value={isa === 'riscv' ? 'RISC-V (RV32I)' : 'MIPS I'} />
         </div>
       </Section>
 
-      {/* ── Assignment ──────────────────────────────────────── */}
-      <Section title="Assignment" icon={<BookOpen size={13} className="text-text-muted" />} last>
-        <div>
-          <div className="flex items-start justify-between mb-2">
-            <div>
-              <h4 className="text-white font-semibold text-sm">Lab 3 — Hazards</h4>
-              <p className="text-text-muted text-xs">Task 2 of 4</p>
-            </div>
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-brand-500/20 text-brand-400 font-medium shrink-0">
-              Due 2d
-            </span>
-          </div>
 
-          <div className="w-full h-1.5 bg-bg-panel rounded-full overflow-hidden mb-1">
-            <div className="h-full bg-brand-500 rounded-full" style={{ width: '50%', boxShadow: '0 0 6px rgba(59,130,246,0.5)' }} />
-          </div>
-          <p className="text-text-muted text-xs mb-3">50% complete — 2 of 4 tasks done</p>
-
-          <div className="flex flex-col gap-1.5 mb-3">
-            {[
-              { label: 'Identify data hazards',    done: true },
-              { label: 'Explain forwarding paths', done: true },
-              { label: 'Count stall cycles',       done: false },
-              { label: 'Optimise code',            done: false },
-            ].map(({ label, done }) => (
-              <div key={label} className="flex items-center gap-2 text-xs">
-                <div className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center shrink-0 ${done ? 'bg-brand-500 border-brand-500' : 'border-border-subtle'}`}>
-                  {done && <span className="text-white text-[9px] font-bold">✓</span>}
-                </div>
-                <span className={done ? 'text-text-muted line-through' : 'text-text-main'}>{label}</span>
-              </div>
-            ))}
-          </div>
-
-          <button className="text-xs text-brand-500 hover:text-brand-400 flex items-center gap-1 transition-colors">
-            View rubric <ExternalLink size={11} />
-          </button>
-        </div>
-      </Section>
           </div>
         )}
       </div>

@@ -1,43 +1,39 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { TrendingDown, TrendingUp, BarChart3, Activity, Zap, Timer } from 'lucide-react';
+import { getAnalyticsData, type AnalyticsSession } from '../../services/activityService';
+import { useAuthStore } from '../../store/authStore';
 
-interface SessionData {
-  id: string;
-  date: string;
-  cpi: number;
-  stallRate: number;
-  hazards: { data: number; control: number; structural: number };
-  cycles: number;
-  instructions: number;
-}
-
-// Mock session data for demonstration
-const MOCK_SESSIONS: SessionData[] = Array.from({ length: 12 }, (_, i) => {
-  const date = new Date();
-  date.setDate(date.getDate() - (11 - i) * 3);
-  const cpi = 1.2 + Math.random() * 1.5 - (i * 0.05); // trending down over time
-  return {
-    id: `s${i}`,
-    date: date.toISOString(),
-    cpi: Math.max(1, Math.round(cpi * 100) / 100),
-    stallRate: Math.round(Math.random() * 30),
-    hazards: {
-      data: Math.floor(Math.random() * 15 + 2),
-      control: Math.floor(Math.random() * 8),
-      structural: Math.floor(Math.random() * 3),
-    },
-    cycles: Math.floor(Math.random() * 200 + 50),
-    instructions: Math.floor(Math.random() * 100 + 20),
-  };
-});
 
 export const AnalyticsDashboard = () => {
-  const sessions = MOCK_SESSIONS;
+  const { profile } = useAuthStore();
+  const [sessions, setSessions] = useState<AnalyticsSession[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (profile) {
+      getAnalyticsData(profile.id).then(({ sessions, error }) => {
+        if (!error && sessions.length > 0) {
+          setSessions(sessions);
+        } else if (sessions.length === 0) {
+          // If no real data, keep empty state or show minimal
+          setSessions([]);
+        }
+        setLoading(false);
+      });
+    } else {
+      setLoading(false);
+    }
+  }, [profile]);
+
+  if (loading) return <div className="p-8 text-text-muted">Loading analytics...</div>;
+  if (sessions.length === 0) return <div className="p-8 text-text-muted">Run some simulations to generate analytics data!</div>;
+
   const latest = sessions[sessions.length - 1];
-  const previous = sessions[sessions.length - 2];
-  const cpiTrend = latest.cpi < previous.cpi ? 'improving' : 'degrading';
+  const previous = sessions.length > 1 ? sessions[sessions.length - 2] : latest;
+  const cpiTrend = latest.cpi <= previous.cpi ? 'improving' : 'degrading';
 
   const avgCpi = useMemo(() => {
+    if (sessions.length === 0) return 0;
     const sum = sessions.reduce((a, s) => a + s.cpi, 0);
     return Math.round((sum / sessions.length) * 100) / 100;
   }, [sessions]);

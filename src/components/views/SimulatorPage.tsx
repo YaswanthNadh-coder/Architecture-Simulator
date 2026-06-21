@@ -15,6 +15,7 @@ import { ShareDialog } from './ShareDialog';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { UpgradeBanner } from '../monetization/UpgradeBanner';
+import { projectService } from '../../services/projectService';
 
 // Views
 import { DatapathView } from './DatapathView';
@@ -29,14 +30,8 @@ import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
 
 type TabView = 'Pipeline' | 'Datapath' | 'Timing' | 'Memory' | 'Cache' | 'Diff' | 'Branching';
 
-const STORAGE_KEY = 'archsim_projects';
-
-interface Project {
-  id: string;
-  name: string;
-  code: string;
-  modified: string;
-}
+// Project loading/saving uses Supabase via projectService
+// (previously used localStorage with STORAGE_KEY = 'archsim_projects')
 
 export const SimulatorPage = () => {
   const [searchParams] = useSearchParams();
@@ -119,11 +114,9 @@ export const SimulatorPage = () => {
       return;
     }
 
-    // 2. Load regular project
+    // 2. Load regular project from Supabase
     if (projectId) {
-      try {
-        const projects: Project[] = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-        const proj = projects.find(p => p.id === projectId);
+      projectService.get(projectId).then(({ data: proj }) => {
         if (proj) {
           setProjectName(proj.name);
           setCode(proj.code);
@@ -132,29 +125,26 @@ export const SimulatorPage = () => {
           setProjectName('Unknown Project');
           setActiveProjectId(null);
         }
-      } catch {
+      }).catch(() => {
         setProjectName('Error loading project');
         setActiveProjectId(null);
-      }
+      });
     } else {
       setProjectName('Scratchpad');
       setActiveProjectId(null);
     }
   }, [projectId, searchParams, setProjectName, setCode, setActiveProjectId, setForwardingEnabled, setBranchPrediction, setISA, runAssemble]);
 
+  // Auto-save project code to Supabase (debounced by React's batching)
   useEffect(() => {
     if (activeProjectId === projectId && projectId) {
-      try {
-        const projects: Project[] = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-        const projIndex = projects.findIndex(p => p.id === projectId);
-        if (projIndex !== -1 && projects[projIndex].code !== code) {
-          projects[projIndex].code = code;
-          projects[projIndex].modified = new Date().toISOString();
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
-        }
-      } catch (e) {
-        console.error('Failed to save project to localStorage:', e);
-      }
+      // Use a debounce timer to avoid saving on every keystroke
+      const timer = setTimeout(() => {
+        projectService.update(projectId, { code }).catch((e) => {
+          console.error('Failed to save project to Supabase:', e);
+        });
+      }, 1000);
+      return () => clearTimeout(timer);
     }
   }, [code, activeProjectId, projectId]);
 

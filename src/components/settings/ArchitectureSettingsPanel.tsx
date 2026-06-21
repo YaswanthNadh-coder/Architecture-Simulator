@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Cpu, X, HelpCircle, Download } from 'lucide-react';
+import { Cpu, X, HelpCircle, Download, Lock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSimulatorStore } from '../../store/simulatorStore';
+import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { generateReport } from '../../lib/reportGenerator';
 
 export const ArchitectureSettingsPanel = () => {
@@ -9,9 +10,11 @@ export const ArchitectureSettingsPanel = () => {
     forwardingEnabled, toggleForwarding,
     branchPrediction, setBranchPrediction,
     memoryLatency, setMemoryLatency,
-    cacheConfig, setCacheConfig
+    cacheConfig, setCacheConfig,
+    isa, setISA
   } = useSimulatorStore();
   
+  const { canAccess } = useSubscriptionStore();
   const [isOpen, setIsOpen] = useState(false);
 
   return (
@@ -141,6 +144,46 @@ export const ArchitectureSettingsPanel = () => {
                   <div className="flex justify-between text-[10px] text-text-muted font-mono mt-2">
                     <span>0 (Ideal)</span>
                     <span>10 (Slow)</span>
+                  </div>
+                </div>
+
+                {/* Instruction Set Architecture */}
+                <div className="space-y-3 pt-6 border-t border-border-subtle">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-bold text-white">Instruction Set Architecture</h3>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => setISA('mips')}
+                      className={`p-3 rounded-xl border flex flex-col items-center justify-center text-center gap-1 transition-all cursor-pointer ${
+                        isa === 'mips'
+                          ? 'bg-brand-500/10 border-brand-500/50 text-brand-400 font-bold'
+                          : 'bg-bg-panel border-border-subtle text-text-muted hover:border-border-subtle/80 hover:text-white'
+                      }`}
+                    >
+                      <span className="text-xs">MIPS I</span>
+                    </button>
+                    
+                    <button
+                      onClick={() => {
+                        if (canAccess('riscvSupport')) {
+                          setISA('riscv');
+                        } else {
+                          alert('RISC-V Support requires a Pro, Institution, or Enterprise plan. Please upgrade to access this feature.');
+                        }
+                      }}
+                      className={`p-3 rounded-xl border flex flex-col items-center justify-center text-center gap-1 transition-all cursor-pointer ${
+                        isa === 'riscv'
+                          ? 'bg-brand-500/10 border-brand-500/50 text-brand-400 font-bold'
+                          : 'bg-bg-panel border-border-subtle text-text-muted hover:border-border-subtle/80 hover:text-white'
+                      } ${!canAccess('riscvSupport') ? 'opacity-65' : ''}`}
+                    >
+                      <span className="text-xs flex items-center gap-1 justify-center">
+                        {!canAccess('riscvSupport') && <Lock size={11} className="text-text-muted shrink-0" />}
+                        RISC-V (RV32I)
+                      </span>
+                    </button>
                   </div>
                 </div>
 

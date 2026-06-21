@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Mail, Lock, Eye, EyeOff, Zap } from 'lucide-react';
@@ -6,11 +6,25 @@ import { useAuthStore } from '../../store/authStore';
 
 export const LoginPage = () => {
   const navigate = useNavigate();
-  const { login, loginWithGoogle, loading, error, clearError } = useAuthStore();
+  const { login, loginWithGoogle, loading, error, clearError, isAuthenticated } = useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPwd, setShowPwd] = useState(false);
   const [localErr, setLocalErr] = useState('');
+
+  // Clear any stale auth errors when the login page mounts
+  // (e.g. from a previous session or email confirmation redirect)
+  useEffect(() => {
+    clearError();
+  }, [clearError]);
+
+  // If user is already authenticated (e.g. after email confirmation),
+  // redirect to home immediately
+  useEffect(() => {
+    if (isAuthenticated && !loading) {
+      navigate('/');
+    }
+  }, [isAuthenticated, loading, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -6,7 +6,7 @@ interface ProtectedRouteProps {
 }
 
 export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
-  const { isAuthenticated, loading, user } = useAuthStore();
+  const { isAuthenticated, loading, user, profile } = useAuthStore();
 
   if (loading) {
     return (
@@ -54,6 +54,21 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
           >
             I've verified — refresh
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Profile not yet loaded from Supabase (can happen briefly after OAuth sign-in
+  // if the DB trigger hasn't created the profile row yet)
+  if (!profile) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center" style={{ background: 'var(--color-bg-base)' }}>
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-500 to-cyan-400 flex items-center justify-center text-white font-bold text-xl animate-pulse">
+            A
+          </div>
+          <p className="text-text-muted text-xs">Loading profile…</p>
         </div>
       </div>
     );
