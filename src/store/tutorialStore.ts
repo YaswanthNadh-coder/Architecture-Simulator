@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { TUTORIAL_LESSONS, type TutorialLesson } from '../engine/tutorialLessons';
+import { useAuthStore } from './authStore';
+
+interface UserProgress {
+  completedLessons: string[];
+  lessonScores: Record<string, { correct: number; total: number }>;
+  answeredQuestions: Record<string, number[]>;
+}
 
 interface TutorialStore {
   // Current lesson state
@@ -8,10 +15,8 @@ interface TutorialStore {
   currentStepIndex: number;
   isActive: boolean;
 
-  // Progress tracking (persisted)
-  completedLessons: string[];
-  lessonScores: Record<string, { correct: number; total: number }>;
-  answeredQuestions: Record<string, number[]>; // lessonId -> step indices answered
+  // Progress tracking (persisted) keyed by user id
+  userProgress: Record<string, UserProgress>;
 
   // Actions
   startLesson: (lessonId: string) => void;
@@ -28,6 +33,13 @@ interface TutorialStore {
   getOverallProgress: () => { completed: number; total: number; percentage: number };
 }
 
+const getUserId = () => useAuthStore.getState().user?.id || 'anonymous';
+const getDefaultProgress = (): UserProgress => ({
+  completedLessons: [],
+  lessonScores: {},
+  answeredQuestions: {},
+});
+
 export const useTutorialStore = create<TutorialStore>()(
   persist(
     (set, get) => ({
@@ -35,9 +47,7 @@ export const useTutorialStore = create<TutorialStore>()(
       currentStepIndex: 0,
       isActive: false,
 
-      completedLessons: [],
-      lessonScores: {},
-      answeredQuestions: {},
+      userProgress: {},
 
       startLesson: (lessonId: string) => {
         const lesson = TUTORIAL_LESSONS.find(l => l.id === lessonId);
@@ -68,7 +78,7 @@ export const useTutorialStore = create<TutorialStore>()(
       },
 
       answerQuestion: (stepIndex: number, selectedIndex: number): boolean => {
-        const { currentLessonId, answeredQuestions, lessonScores } = get();
+        const { currentLessonId, userProgress } = get();
         if (!currentLessonId) return false;
 
         const lesson = TUTORIAL_LESSONS.find(l => l.id === currentLessonId);
@@ -79,21 +89,29 @@ export const useTutorialStore = create<TutorialStore>()(
 
         const isCorrect = selectedIndex === step.question.correctIndex;
 
+        const userId = getUserId();
+        const progress = userProgress[userId] || getDefaultProgress();
+
         // Track answered questions
-        const lessonAnswered = answeredQuestions[currentLessonId] || [];
+        const lessonAnswered = progress.answeredQuestions[currentLessonId] || [];
         if (!lessonAnswered.includes(stepIndex)) {
-          const newAnswered = { ...answeredQuestions, [currentLessonId]: [...lessonAnswered, stepIndex] };
+          const newAnswered = { ...progress.answeredQuestions, [currentLessonId]: [...lessonAnswered, stepIndex] };
 
           // Update score
-          const currentScore = lessonScores[currentLessonId] || { correct: 0, total: 0 };
+          const currentScore = progress.lessonScores[currentLessonId] || { correct: 0, total: 0 };
           const newScore = {
             correct: currentScore.correct + (isCorrect ? 1 : 0),
             total: currentScore.total + 1,
           };
 
-          set({
+          const newProgress = {
+            ...progress,
             answeredQuestions: newAnswered,
-            lessonScores: { ...lessonScores, [currentLessonId]: newScore },
+            lessonScores: { ...progress.lessonScores, [currentLessonId]: newScore },
+          };
+
+          set({
+            userProgress: { ...userProgress, [userId]: newProgress },
           });
         }
 
@@ -101,11 +119,20 @@ export const useTutorialStore = create<TutorialStore>()(
       },
 
       completeLesson: () => {
-        const { currentLessonId, completedLessons } = get();
+        const { currentLessonId, userProgress } = get();
         if (!currentLessonId) return;
 
-        if (!completedLessons.includes(currentLessonId)) {
-          set({ completedLessons: [...completedLessons, currentLessonId] });
+        const userId = getUserId();
+        const progress = userProgress[userId] || getDefaultProgress();
+
+        if (!progress.completedLessons.includes(currentLessonId)) {
+          const newProgress = {
+            ...progress,
+            completedLessons: [...progress.completedLessons, currentLessonId],
+          };
+          set({
+            userProgress: { ...userProgress, [userId]: newProgress },
+          });
         }
       },
 
@@ -118,10 +145,13 @@ export const useTutorialStore = create<TutorialStore>()(
       },
 
       resetProgress: () => {
+        const userId = getUserId();
+        const { userProgress } = get();
         set({
-          completedLessons: [],
-          lessonScores: {},
-          answeredQuestions: {},
+          userProgress: {
+            ...userProgress,
+            [userId]: getDefaultProgress(),
+          },
         });
       },
 
@@ -132,17 +162,19 @@ export const useTutorialStore = create<TutorialStore>()(
       },
 
       getLessonProgress: (lessonId: string) => {
-        const { completedLessons, lessonScores } = get();
+        const userId = getUserId();
+        const progress = get().userProgress[userId] || getDefaultProgress();
         return {
-          completed: completedLessons.includes(lessonId),
-          score: lessonScores[lessonId] || null,
+          completed: progress.completedLessons.includes(lessonId),
+          score: progress.lessonScores[lessonId] || null,
         };
       },
 
       getOverallProgress: () => {
-        const { completedLessons } = get();
+        const userId = getUserId();
+        const progress = get().userProgress[userId] || getDefaultProgress();
         const total = TUTORIAL_LESSONS.length;
-        const completed = completedLessons.length;
+        const completed = progress.completedLessons.length;
         return {
           completed,
           total,
@@ -153,10 +185,25 @@ export const useTutorialStore = create<TutorialStore>()(
     {
       name: 'archsim_tutorial_progress',
       partialize: (state) => ({
-        completedLessons: state.completedLessons,
-        lessonScores: state.lessonScores,
-        answeredQuestions: state.answeredQuestions,
+        userProgress: state.userProgress,
       }),
+      merge: (persistedState: any, currentState) => {
+        // Migrate old flat structure to the new userProgress keyed object structure
+        if (persistedState && persistedState.completedLessons) {
+          return {
+            ...currentState,
+            userProgress: {
+              ...currentState.userProgress,
+              'anonymous': {
+                completedLessons: persistedState.completedLessons || [],
+                lessonScores: persistedState.lessonScores || {},
+                answeredQuestions: persistedState.answeredQuestions || {},
+              }
+            }
+          };
+        }
+        return { ...currentState, ...persistedState };
+      }
     }
   )
 );

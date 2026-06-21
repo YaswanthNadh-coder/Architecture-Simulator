@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Settings, User, Monitor, CreditCard, AlertTriangle, Download, Sparkles } from 'lucide-react';
+import { Settings, User, Monitor, CreditCard, AlertTriangle, Download, Sparkles, LogOut } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
+import { useSettingsStore } from '../../store/settingsStore';
 import { useNavigate } from 'react-router-dom';
 
 export const SettingsPage = () => {
@@ -10,8 +11,8 @@ export const SettingsPage = () => {
     tier, status, cancelAtPeriodEnd,
     isStudentDiscount, getTrialDaysRemaining, isTrialActive,
   } = useSubscriptionStore();
+  const { fontSize, setFontSize } = useSettingsStore();
   const navigate = useNavigate();
-  const [fontSize, setFontSize] = useState('14px');
 
   const isPaid = tier === 'pro' || tier === 'institution';
   const trialDays = getTrialDaysRemaining();
@@ -20,6 +21,26 @@ export const SettingsPage = () => {
   const tierDisplayName = (t: string) => {
     const names: Record<string, string> = { free: 'Free', pro: 'Pro', institution: 'Institution' };
     return names[t] || t;
+  };
+
+  const handleExport = () => {
+    const data = {
+      profile: profile,
+      simulatorState: JSON.parse(localStorage.getItem('archsim_simulator_storage') || '{}'),
+      tutorialProgress: JSON.parse(localStorage.getItem('archsim_tutorial_progress') || '{}'),
+      settings: JSON.parse(localStorage.getItem('archsim_settings') || '{}'),
+      exportDate: new Date().toISOString()
+    };
+    
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `archsim_export_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -39,10 +60,19 @@ export const SettingsPage = () => {
               <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-brand-500 to-cyan-400 flex items-center justify-center text-white font-bold text-3xl shadow-lg">
                 {profile?.full_name?.charAt(0) || 'A'}
               </div>
-              <div>
+              <div className="flex-1">
                 <h3 className="text-xl font-bold text-white">{profile?.full_name || 'Anonymous User'}</h3>
                 <p className="text-text-muted capitalize">{profile?.role || 'Student'}</p>
               </div>
+              <button
+                onClick={async () => {
+                  await useAuthStore.getState().logout();
+                  navigate('/login');
+                }}
+                className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white text-sm font-semibold rounded-xl transition-colors border border-white/10 flex items-center gap-2"
+              >
+                <LogOut size={16} /> Log Out
+              </button>
             </div>
           </section>
 
@@ -128,17 +158,11 @@ export const SettingsPage = () => {
                   <p className="text-sm text-text-main">Export your data</p>
                   <p className="text-xs text-text-muted">Download all programs, execution history, and settings as JSON.</p>
                 </div>
-                <button className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white text-sm font-semibold rounded-xl transition-colors border border-white/10">
+                <button 
+                  onClick={handleExport}
+                  className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white text-sm font-semibold rounded-xl transition-colors border border-white/10"
+                >
                   Export
-                </button>
-              </div>
-              <div className="flex items-center justify-between py-2 border-t border-border-subtle">
-                <div>
-                  <p className="text-sm text-text-main">Request data deletion</p>
-                  <p className="text-xs text-text-muted">All personal data will be removed within 30 days per GDPR.</p>
-                </div>
-                <button className="px-4 py-2 bg-hazard/5 hover:bg-hazard/10 text-hazard text-sm font-semibold rounded-xl transition-colors border border-hazard/20">
-                  Request
                 </button>
               </div>
             </div>
