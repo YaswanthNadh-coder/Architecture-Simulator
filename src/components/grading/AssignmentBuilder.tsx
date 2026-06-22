@@ -46,6 +46,9 @@ export const AssignmentBuilder = ({ initial, onSave, onCancel }: Props) => {
   const [testCases, setTestCases] = useState<TestCase[]>(initial?.testCases || []);
   const [rubric, setRubric] = useState(initial?.rubric || { correctness: 50, efficiency: 30, style: 20 });
   const [newBlockedInstr, setNewBlockedInstr] = useState('');
+  const [latePenaltyPct, setLatePenaltyPct] = useState(initial?.latePenaltyPct || 0);
+  const [maxAttempts, setMaxAttempts] = useState(initial?.maxAttempts || -1);
+  const [maxCyclesLimit, setMaxCyclesLimit] = useState(initial?.maxCyclesLimit || 10000);
 
   const stepIndex = WIZARD_STEPS.indexOf(currentStep);
   const canPrev = stepIndex > 0;
@@ -69,6 +72,9 @@ export const AssignmentBuilder = ({ initial, onSave, onCancel }: Props) => {
       timeLimit: timeLimit || undefined,
       testCases,
       rubric,
+      latePenaltyPct,
+      maxAttempts,
+      maxCyclesLimit,
     };
     onSave(assignment);
   };
@@ -194,17 +200,59 @@ export const AssignmentBuilder = ({ initial, onSave, onCancel }: Props) => {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-bold text-white mb-2 flex items-center gap-1.5">
-                    <Clock size={12} /> Time Limit (minutes, 0 = unlimited)
-                  </label>
-                  <input
-                    type="number"
-                    value={timeLimit}
-                    onChange={(e) => setTimeLimit(parseInt(e.target.value) || 0)}
-                    min={0}
-                    className="w-32 px-4 py-2.5 bg-bg-base border border-border-subtle rounded-xl text-white text-sm focus:outline-none focus:border-brand-500 transition-colors"
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-white mb-2 flex items-center gap-1.5">
+                      <Clock size={12} /> Time Limit (minutes, 0 = unlimited)
+                    </label>
+                    <input
+                      type="number"
+                      value={timeLimit}
+                      onChange={(e) => setTimeLimit(parseInt(e.target.value) || 0)}
+                      min={0}
+                      className="w-full px-4 py-2.5 bg-bg-base border border-border-subtle rounded-xl text-white text-sm focus:outline-none focus:border-brand-500 transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-white mb-2">
+                      Max Attempts (-1 = unlimited)
+                    </label>
+                    <input
+                      type="number"
+                      value={maxAttempts}
+                      onChange={(e) => setMaxAttempts(parseInt(e.target.value) || -1)}
+                      min={-1}
+                      className="w-full px-4 py-2.5 bg-bg-base border border-border-subtle rounded-xl text-white text-sm focus:outline-none focus:border-brand-500 transition-colors"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-white mb-2">
+                      Late Penalty % (per day)
+                    </label>
+                    <input
+                      type="number"
+                      value={latePenaltyPct}
+                      onChange={(e) => setLatePenaltyPct(Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+                      min={0}
+                      max={100}
+                      className="w-full px-4 py-2.5 bg-bg-base border border-border-subtle rounded-xl text-white text-sm focus:outline-none focus:border-brand-500 transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-white mb-2">
+                      Max Cycles Limit
+                    </label>
+                    <input
+                      type="number"
+                      value={maxCyclesLimit}
+                      onChange={(e) => setMaxCyclesLimit(Math.max(100, parseInt(e.target.value) || 10000))}
+                      min={100}
+                      className="w-full px-4 py-2.5 bg-bg-base border border-border-subtle rounded-xl text-white text-sm focus:outline-none focus:border-brand-500 transition-colors"
+                    />
+                  </div>
                 </div>
 
                 {/* Blocked Instructions */}
@@ -607,6 +655,22 @@ function TestCaseCard({
               placeholder="What does this test verify?"
               className="w-full px-3 py-1.5 bg-bg-panel border border-border-subtle rounded-lg text-white text-xs placeholder:text-text-muted focus:outline-none focus:border-brand-500"
             />
+          </div>
+
+          {/* Visibility toggle */}
+          <div>
+            <label className="text-[10px] text-text-muted mb-1 block">Visibility</label>
+            <button
+              type="button"
+              onClick={() => onChange({ hidden: !testCase.hidden })}
+              className={`text-xs px-3 py-1.5 rounded-lg border flex items-center gap-1.5 font-bold transition-all cursor-pointer ${
+                testCase.hidden
+                  ? 'bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/20'
+                  : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20'
+              }`}
+            >
+              {testCase.hidden ? '🔒 Hidden (server-graded)' : '👁 Visible to students'}
+            </button>
           </div>
 
           {/* Expected Registers */}

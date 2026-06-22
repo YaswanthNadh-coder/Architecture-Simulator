@@ -2,6 +2,7 @@ export interface TestCase {
   id: string;
   name: string;
   description: string;
+  hidden?: boolean;
   input?: {
     memory?: Record<number, number>;
     registers?: Record<string, number>;
@@ -34,6 +35,9 @@ export interface AssignmentProfile {
     efficiency: number;
     style: number;
   };
+  latePenaltyPct?: number;
+  maxAttempts?: number;
+  maxCyclesLimit?: number;
 }
 
 export const ASSIGNMENTS: AssignmentProfile[] = [

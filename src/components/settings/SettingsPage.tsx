@@ -1,4 +1,4 @@
-import { useState } from 'react';
+// No hooks needed in SettingsPage
 import { Settings, User, Monitor, CreditCard, AlertTriangle, Download, Sparkles, LogOut } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
