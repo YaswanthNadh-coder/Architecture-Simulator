@@ -4,6 +4,40 @@
 
 import { supabase, type Project } from '../lib/supabase';
 
+const LOCAL_STORAGE_KEY = 'architecture_simulator_projects';
+
+const getLocalProjects = (): Project[] => {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    console.error('Failed to read projects from localStorage', e);
+    return [];
+  }
+};
+
+const saveLocalProjects = (projects: Project[]) => {
+  try {
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(projects));
+  } catch (e) {
+    console.error('Failed to write projects to localStorage', e);
+  }
+};
+
+const isSchemaError = (error: any): boolean => {
+  if (!error) return false;
+  const msg = error.message?.toLowerCase() || '';
+  const code = error.code || '';
+  return (
+    msg.includes('schema cache') ||
+    msg.includes('does not exist') ||
+    msg.includes('relation') ||
+    code === '42P01' ||
+    code === 'PGRST204' ||
+    code === 'PGRST205'
+  );
+};
+
 export const projectService = {
   /**
    * List all projects for the given user, ordered by most recently updated.
@@ -14,6 +48,15 @@ export const projectService = {
       .select('*')
       .eq('user_id', userId)
       .order('updated_at', { ascending: false });
+
+    if (error && isSchemaError(error)) {
+      console.warn('Supabase projects table not found, falling back to localStorage');
+      const local = getLocalProjects()
+        .filter((p) => p.user_id === userId)
+        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+      return { data: local, error: null };
+    }
+
     return { data: data ?? [], error: error?.message ?? null };
   },
 
@@ -39,6 +82,24 @@ export const projectService = {
       .select()
       .single();
 
+    if (error && isSchemaError(error)) {
+      console.warn('Supabase projects table not found, falling back to localStorage');
+      const newProject: Project = {
+        id: crypto.randomUUID(),
+        user_id: userId,
+        name,
+        code,
+        description: description ?? '',
+        template: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      const local = getLocalProjects();
+      local.unshift(newProject);
+      saveLocalProjects(local);
+      return { data: newProject, error: null };
+    }
+
     if (error?.message?.includes('program_limit_reached')) {
       return { data: null, error: 'program_limit_reached' };
     }
@@ -57,6 +118,22 @@ export const projectService = {
       .from('projects')
       .update(updates)
       .eq('id', projectId);
+
+    if (error && isSchemaError(error)) {
+      console.warn('Supabase projects table not found, falling back to localStorage');
+      const local = getLocalProjects();
+      const index = local.findIndex((p) => p.id === projectId);
+      if (index !== -1) {
+        local[index] = {
+          ...local[index],
+          ...updates,
+          updated_at: new Date().toISOString(),
+        };
+        saveLocalProjects(local);
+      }
+      return { error: null };
+    }
+
     return { error: error?.message ?? null };
   },
 
@@ -72,6 +149,14 @@ export const projectService = {
       .eq('id', projectId)
       .eq('user_id', userId);
 
+    if (error && isSchemaError(error)) {
+      console.warn('Supabase projects table not found, falling back to localStorage');
+      const local = getLocalProjects();
+      const updated = local.filter((p) => !(p.id === projectId && p.user_id === userId));
+      saveLocalProjects(updated);
+      return { error: null };
+    }
+
     return { error: error?.message ?? null };
   },
 
@@ -84,6 +169,14 @@ export const projectService = {
       .select('*')
       .eq('id', projectId)
       .single();
+
+    if (error && isSchemaError(error)) {
+      console.warn('Supabase projects table not found, falling back to localStorage');
+      const local = getLocalProjects();
+      const found = local.find((p) => p.id === projectId);
+      return { data: found ?? null, error: found ? null : 'Project not found' };
+    }
+
     return { data: data ?? null, error: error?.message ?? null };
   },
 };

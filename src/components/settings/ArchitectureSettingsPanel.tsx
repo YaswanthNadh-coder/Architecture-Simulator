@@ -4,6 +4,92 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useSimulatorStore } from '../../store/simulatorStore';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { generateReport } from '../../lib/reportGenerator';
+import { MIPSPipelineEngine } from '../../engine/pipelineEngine';
+
+const calculateCPIForForwarding = (instructions: any[], forwarding: boolean): number => {
+  if (!instructions || instructions.length === 0) return 0;
+  const testEngine = new MIPSPipelineEngine();
+  testEngine.forwardingEnabled = forwarding;
+  testEngine.loadProgram(instructions);
+  
+  let cycles = 0;
+  let finalStats = null;
+  while (!testEngine.isFinished() && cycles < 1000) {
+    const snap = testEngine.step();
+    finalStats = snap.stats;
+    cycles++;
+  }
+  if (!finalStats) return 0;
+  return finalStats.instructionsCompleted > 0 ? finalStats.totalCycles / finalStats.instructionsCompleted : 0;
+};
+
+const ForwardingImpactWidget = () => {
+  const { instructions } = useSimulatorStore();
+  
+  if (!instructions || instructions.length === 0) {
+    return (
+      <div className="bg-bg-panel border border-border-subtle rounded-xl p-3 text-center">
+        <p className="text-[10px] text-text-muted">Assemble a MIPS program to see live forwarding CPI impact comparison.</p>
+      </div>
+    );
+  }
+
+  // Calculate CPI with forwarding
+  const cpiWith = calculateCPIForForwarding(instructions, true);
+  // Calculate CPI without forwarding
+  const cpiWithout = calculateCPIForForwarding(instructions, false);
+
+  const diffPercent = cpiWithout > 0 ? ((cpiWithout - cpiWith) / cpiWithout) * 100 : 0;
+
+  return (
+    <div className="bg-bg-panel border border-border-subtle rounded-xl p-3 space-y-3 mt-2">
+      <div>
+        <h4 className="text-[11px] font-bold text-white mb-0.5">Data Forwarding CPI Impact</h4>
+        <p className="text-[9px] text-text-muted">
+          Compares execution cycles per instruction (CPI) with and without forwarding.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        {/* With Forwarding */}
+        <div className="space-y-1">
+          <div className="flex justify-between text-[10px] font-medium">
+            <span className="text-emerald-400">With Forwarding (Active)</span>
+            <span className="font-mono text-white">{cpiWith.toFixed(2)} CPI</span>
+          </div>
+          <div className="w-full h-1.5 bg-bg-base rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-emerald-500 rounded-full transition-all duration-500" 
+              style={{ width: `${Math.min(100, (cpiWith / Math.max(cpiWith, cpiWithout, 1)) * 100)}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Without Forwarding */}
+        <div className="space-y-1">
+          <div className="flex justify-between text-[10px] font-medium">
+            <span className="text-amber-400">Without Forwarding</span>
+            <span className="font-mono text-white">{cpiWithout.toFixed(2)} CPI</span>
+          </div>
+          <div className="w-full h-1.5 bg-bg-base rounded-full overflow-hidden">
+            <div 
+              className="h-full bg-amber-500 rounded-full transition-all duration-500" 
+              style={{ width: `${Math.min(100, (cpiWithout / Math.max(cpiWith, cpiWithout, 1)) * 100)}%` }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {diffPercent > 0 && (
+        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-2 text-center">
+          <p className="text-[10px] text-emerald-400 font-medium">
+            Forwarding paths reduce CPI by <span className="font-bold">{diffPercent.toFixed(1)}%</span>!
+          </p>
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const ArchitectureSettingsPanel = () => {
   const { 
@@ -82,6 +168,9 @@ export const ArchitectureSettingsPanel = () => {
                       <div className="w-9 h-5 bg-bg-panel peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-text-muted peer-checked:after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500 border border-border-subtle"></div>
                     </label>
                   </div>
+                  
+                  {/* Side-by-side Forwarding CPI widget */}
+                  <ForwardingImpactWidget />
                 </div>
 
                 {/* Branch Prediction */}
@@ -246,6 +335,19 @@ export const ArchitectureSettingsPanel = () => {
                           <option value="1">Direct Mapped</option>
                           <option value="2">2-Way Set Assoc.</option>
                           <option value="4">4-Way Set Assoc.</option>
+                        </select>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-text-muted">Replacement Policy</span>
+                        <select 
+                          value={cacheConfig.policy || 'lru'}
+                          onChange={(e) => setCacheConfig({ ...cacheConfig, policy: e.target.value as any })}
+                          className="bg-bg-base border border-border-subtle text-white text-xs rounded-lg px-2 py-1 outline-none"
+                        >
+                          <option value="lru">LRU (Least Recently Used)</option>
+                          <option value="fifo">FIFO (First In First Out)</option>
+                          <option value="random">Random</option>
                         </select>
                       </div>
 

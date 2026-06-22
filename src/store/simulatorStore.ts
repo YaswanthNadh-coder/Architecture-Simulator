@@ -247,6 +247,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
     blockSize: 16,
     associativity: 1,
     missPenalty: 10,
+    policy: 'lru',
   },
   speed: 800,
   breakpoints: new Set(),

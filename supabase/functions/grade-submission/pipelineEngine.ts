@@ -1,15 +1,7 @@
-/**
- * MIPS 5-Stage Pipeline Simulation Engine
- * Implements: IF → ID → EX → MEM → WB with hazard detection, forwarding, and stalls.
- * Supports syscalls, data segments, history cap, and event callbacks.
- */
-
-import type { ParsedInstruction } from './mipsParser';
-import { handleSyscall, type SyscallResult } from './syscallHandler';
-import { CacheSimulator } from './cacheSimulator';
-import { BranchPredictionTracker } from './branchPredictor';
-
-// ── Types ────────────────────────────────────────────────────────────────
+import type { ParsedInstruction } from './mipsParser.ts';
+import { handleSyscall, type SyscallResult } from './syscallHandler.ts';
+import { CacheSimulator } from './cacheSimulator.ts';
+import { BranchPredictionTracker } from './branchPredictor.ts';
 
 export type InstructionStatus = 'normal' | 'hazard' | 'forward' | 'stall' | 'bubble';
 
@@ -37,7 +29,6 @@ export interface DatapathValues {
   writeData: number;
 }
 
-/** Record of which instruction was in which stage at a given cycle */
 export interface CycleRecord {
   cycle: number;
   IF: { instruction: ParsedInstruction | null; status: InstructionStatus; hazardExplanation?: string };
@@ -67,7 +58,7 @@ export interface CycleSnapshot {
 export interface EngineStats {
   totalCycles: number;
   instructionsCompleted: number;
-  stallCycles: number; // total
+  stallCycles: number;
   dataStallCycles: number;
   controlStallCycles: number;
   memoryStallCycles: number;
@@ -77,16 +68,12 @@ export interface EngineStats {
   flushCount: number;
 }
 
-// ── Event Callbacks ──────────────────────────────────────────────────────
-
 export interface EngineEvents {
   onForward?: (from: 'ex' | 'mem', register: number, value: number) => void;
   onStall?: (reason: string, cycle: number) => void;
   onBranchResolved?: (taken: boolean, target: number, cycle: number) => void;
   onSyscall?: (v0: number, result: SyscallResult) => void;
 }
-
-// ── Internal Pipeline Latch Types ────────────────────────────────────────
 
 interface IFIDLatch {
   instruction: ParsedInstruction | null;
@@ -105,7 +92,6 @@ interface IDEXLatch {
   rs: number;
   rt: number;
   writeReg: number;
-  // Control
   regWrite: boolean;
   memRead: boolean;
   memWrite: boolean;
@@ -165,8 +151,6 @@ interface MEMWBLatch {
   loResult: number;
 }
 
-// ── Bubble Factories ─────────────────────────────────────────────────────
-
 const bubbleIFID = (): IFIDLatch => ({ instruction: null, pc: 0, npc: 0, valid: false });
 const bubbleIDEX = (): IDEXLatch => ({
   instruction: null, pc: 0, rsVal: 0, rtVal: 0, imm: 0, shamt: 0,
@@ -185,13 +169,11 @@ const bubbleMEMWB = (): MEMWBLatch => ({
   regWrite: false, memToReg: false, isSyscall: false, op: '', valid: false, status: 'bubble', writesHiLo: false, hiResult: 0, loResult: 0,
 });
 
-// ── History Snapshot (compressed for circular buffer) ─────────────────────
-
 interface HistoryEntry {
   cycle: number;
   pc: number;
   registers: Int32Array;
-  memoryDelta: Map<number, number>; // Only changed bytes vs. initial
+  memoryDelta: Map<number, number>;
   hi: number;
   lo: number;
   finished: boolean;
@@ -202,8 +184,6 @@ interface HistoryEntry {
   stats: EngineStats;
   terminationReason?: 'normal' | 'max_cycles_reached' | 'exception';
 }
-
-// ── Main Engine ──────────────────────────────────────────────────────────
 
 const MAX_HISTORY = 500;
 
@@ -219,22 +199,18 @@ export class MIPSPipelineEngine {
   private finished = false;
   private terminationReason?: 'normal' | 'max_cycles_reached' | 'exception';
 
-  // Pipeline latches
   private ifId: IFIDLatch = bubbleIFID();
   private idEx: IDEXLatch = bubbleIDEX();
   private exMem: EXMEMLatch = bubbleEXMEM();
   private memWb: MEMWBLatch = bubbleMEMWB();
 
-  // Stats
   private stats: EngineStats = this.emptyStats();
 
-  // Config
   public forwardingEnabled = true;
   public branchPrediction: 'not-taken' | 'always-taken' = 'not-taken';
   public memoryLatency = 0;
   public maxCycles = 10000;
   
-  // Cache
   public cache = new CacheSimulator({
     enabled: false,
     cacheSize: 256,
@@ -247,19 +223,10 @@ export class MIPSPipelineEngine {
 
   private memStallCounter = 0;
 
-  // Cycle history for timing diagram
   public cycleHistory: CycleRecord[] = [];
-
-  // History for backward stepping (circular buffer)
   private history: HistoryEntry[] = [];
-
-  // Event callbacks
   public events: EngineEvents = {};
-
-  // Addresses modified this cycle (for UI highlighting)
   private lastModifiedAddresses: number[] = [];
-
-  // ── Public API ───────────────────────────────────────────────────────
 
   loadProgram(instructions: ParsedInstruction[]): void {
     this.instructions = instructions;
@@ -295,7 +262,6 @@ export class MIPSPipelineEngine {
     this.memStallCounter = 0;
     this.cache.reset();
     this.branchPredictor.reset();
-    // Save initial snapshot
     this.history.push(this.takeHistoryEntry());
   }
 
@@ -306,19 +272,14 @@ export class MIPSPipelineEngine {
     this.stats.totalCycles = this.cycle;
     this.lastModifiedAddresses = [];
 
-    // Safety: max cycle limit
     if (this.cycle > this.maxCycles) {
       this.finished = true;
       this.terminationReason = 'max_cycles_reached';
       return this.takeSnapshot();
     }
 
-    // ── 1. Detect hazards ──────────────────────────────────────────
     const stallNeeded = this.detectLoadUseHazard();
 
-    // ── 2. Forwarding logic has been moved to EX stage ─────────────
-
-    // ── 3. Write-Back stage ────────────────────────────────────────
     let syscallResult: SyscallResult | null = null;
     let consoleOutput = '';
 
@@ -330,19 +291,16 @@ export class MIPSPipelineEngine {
       this.stats.instructionsCompleted++;
     }
 
-    // Apply HI/LO register writes
     if (this.memWb.valid && this.memWb.writesHiLo) {
       this.hi = this.memWb.hiResult;
       this.lo = this.memWb.loResult;
     }
 
-    // Handle syscall in WB stage
     if (this.memWb.valid && this.memWb.isSyscall) {
-      const v0 = this.registers[2]; // $v0
+      const v0 = this.registers[2];
       syscallResult = handleSyscall(v0, this.registers, this.memory);
       consoleOutput = syscallResult.outputText;
 
-      // Apply register writes from syscall
       for (const [reg, val] of syscallResult.registerWrites) {
         this.registers[reg] = val;
       }
@@ -355,7 +313,6 @@ export class MIPSPipelineEngine {
       this.events.onSyscall?.(v0, syscallResult);
     }
 
-    // ── Memory Stall Logic ──
     let memStallNeeded = false;
     if (this.memStallCounter > 0) {
       this.memStallCounter--;
@@ -401,32 +358,6 @@ export class MIPSPipelineEngine {
       return this.takeSnapshot(consoleOutput, syscallResult);
     }
 
-    // Apply HI/LO register writes
-    if (this.memWb.valid && this.memWb.writesHiLo) {
-      this.hi = this.memWb.hiResult;
-      this.lo = this.memWb.loResult;
-    }
-
-    // Handle syscall in WB stage
-    if (this.memWb.valid && this.memWb.isSyscall) {
-      const v0 = this.registers[2]; // $v0
-      syscallResult = handleSyscall(v0, this.registers, this.memory);
-      consoleOutput = syscallResult.outputText;
-
-      // Apply register writes from syscall
-      for (const [reg, val] of syscallResult.registerWrites) {
-        this.registers[reg] = val;
-      }
-
-      if (syscallResult.exit) {
-        this.finished = true;
-        this.terminationReason = 'normal';
-      }
-
-      this.events.onSyscall?.(v0, syscallResult);
-    }
-
-    // ── 4. Memory stage ────────────────────────────────────────────
     const newMemWb: MEMWBLatch = this.exMem.valid ? {
       instruction: this.exMem.instruction,
       pc: this.exMem.pc,
@@ -449,7 +380,6 @@ export class MIPSPipelineEngine {
       this.writeMemByOp(this.exMem.op, addr, this.exMem.writeData);
     }
 
-    // ── 5. Execute stage ───────────────────────────────────────────
     let newExMem: EXMEMLatch;
     let branchTaken = false;
     let branchTarget = 0;
@@ -459,19 +389,16 @@ export class MIPSPipelineEngine {
       let forwardB: 'ex' | 'mem' | null = null;
 
       if (this.forwardingEnabled) {
-        // EX hazard
         if (this.exMem.valid && this.exMem.regWrite && this.exMem.writeReg !== 0) {
           if (this.exMem.writeReg === this.idEx.rs) forwardA = 'ex';
           if (this.exMem.writeReg === this.idEx.rt) forwardB = 'ex';
         }
-        // MEM hazard
         if (this.memWb.valid && this.memWb.regWrite && this.memWb.writeReg !== 0) {
           if (this.memWb.writeReg === this.idEx.rs && forwardA !== 'ex') forwardA = 'mem';
           if (this.memWb.writeReg === this.idEx.rt && forwardB !== 'ex') forwardB = 'mem';
         }
       }
 
-      // Apply forwarding to get actual operand values
       let aVal = this.idEx.rsVal;
       let bVal = this.idEx.rtVal;
 
@@ -479,20 +406,16 @@ export class MIPSPipelineEngine {
         if (forwardA === 'ex') {
           aVal = this.exMem.aluResult;
           this.stats.forwardCount++;
-          this.events.onForward?.('ex', this.idEx.rs, aVal);
         } else if (forwardA === 'mem') {
           aVal = this.memWb.memToReg ? this.memWb.memData : this.memWb.aluResult;
           this.stats.forwardCount++;
-          this.events.onForward?.('mem', this.idEx.rs, aVal);
         }
         if (forwardB === 'ex') {
           bVal = this.exMem.aluResult;
           this.stats.forwardCount++;
-          this.events.onForward?.('ex', this.idEx.rt, bVal);
         } else if (forwardB === 'mem') {
           bVal = this.memWb.memToReg ? this.memWb.memData : this.memWb.aluResult;
           this.stats.forwardCount++;
-          this.events.onForward?.('mem', this.idEx.rt, bVal);
         }
       }
 
@@ -518,7 +441,6 @@ export class MIPSPipelineEngine {
 
       const aluResult = this.executeALU(this.idEx.op, aVal, aluInput2, this.idEx.shamt, actualHi, actualLo);
 
-      // Handle mult/div locally in EX
       let writesHiLo = false;
       let hiResult = 0;
       let loResult = 0;
@@ -539,12 +461,11 @@ export class MIPSPipelineEngine {
         }
       }
 
-      // Branch evaluation
       if (this.idEx.isBranch) {
         this.stats.branchCount++;
         const actuallyTaken = this.evaluateBranch(this.idEx.op, aVal, bVal);
         
-        // Record details for visualizer BHT/BTB
+        // Update dynamic prediction tracker
         this.branchPredictor.recordBranch(
           this.idEx.pc,
           this.idEx.instruction!.raw,
@@ -553,28 +474,24 @@ export class MIPSPipelineEngine {
           this.cycle,
           this.branchPrediction
         );
-        
+
         if (actuallyTaken !== this.idEx.predictedTaken) {
           this.stats.branchMispredictions++;
           this.stats.flushCount++;
-          this.stats.controlStallCycles += 1; // 1 cycle penalty for flush in IF
-          branchTaken = true; // Tell Fetch to flush and redirect
+          this.stats.controlStallCycles += 1;
+          branchTaken = true;
           if (actuallyTaken) {
-             // Predicted not-taken, but was taken.
              branchTarget = this.idEx.instruction!.targetAddress;
              this.events.onBranchResolved?.(true, branchTarget, this.cycle);
           } else {
-             // Predicted taken, but was not taken.
              branchTarget = this.idEx.fallthroughPC;
              this.events.onBranchResolved?.(false, branchTarget, this.cycle);
           }
         } else {
-          // Predicted correctly!
           this.events.onBranchResolved?.(actuallyTaken, actuallyTaken ? this.idEx.instruction!.targetAddress : 0, this.cycle);
         }
       }
 
-      // Jump
       if (this.idEx.isJump && !this.idEx.isBranch) {
         branchTaken = true;
         branchTarget = this.idEx.isJumpReg ? aVal : this.idEx.instruction!.targetAddress;
@@ -609,12 +526,10 @@ export class MIPSPipelineEngine {
       newExMem = bubbleEXMEM();
     }
 
-    // ── 6. Decode stage ────────────────────────────────────────────
     let newIdEx: IDEXLatch;
     let idPredictedTaken = false;
     let idBranchTarget = 0;
     if (stallNeeded) {
-      // Stall: insert bubble into EX, freeze IF and ID
       newIdEx = bubbleIDEX();
       newIdEx.status = 'stall';
       newIdEx.instruction = this.ifId.instruction;
@@ -623,7 +538,6 @@ export class MIPSPipelineEngine {
       this.stats.dataStallCycles++;
       this.events.onStall?.('load-use hazard', this.cycle);
     } else if (branchTaken) {
-      // Flush: instruction in ID was fetched speculatively, discard it
       newIdEx = bubbleIDEX();
     } else if (this.ifId.valid) {
       const inst = this.ifId.instruction!;
@@ -666,24 +580,19 @@ export class MIPSPipelineEngine {
       newIdEx = bubbleIDEX();
     }
 
-    // ── 7. Fetch stage ─────────────────────────────────────────────
     let newIfId: IFIDLatch;
     if (stallNeeded) {
-      // Keep current IF/ID (don't advance PC)
       newIfId = this.ifId;
     } else if (branchTaken) {
-      // Flush instruction fetched at wrong PC, fetch from branch target
       this.pc = branchTarget;
       newIfId = this.fetchInstruction();
     } else if (idPredictedTaken) {
-      // Predict taken, fetch from target next cycle, discard sequentially fetched instruction
       this.pc = idBranchTarget;
       newIfId = this.fetchInstruction();
     } else {
       newIfId = this.fetchInstruction();
     }
 
-    // ── 8. Update all latches ──────────────────────────────────────
     this.memWb = newMemWb;
     this.exMem = newExMem;
     this.idEx = newIdEx;
@@ -691,12 +600,10 @@ export class MIPSPipelineEngine {
       this.ifId = newIfId;
     }
 
-    // Check if pipeline is drained (all stages empty and no more instructions)
     if (!this.finished) {
       this.finished = this.isPipelineDrained();
     }
 
-    // Record cycle for timing diagram
     this.cycleHistory.push({
       cycle: this.cycle,
       IF: { instruction: this.ifId.valid ? this.ifId.instruction : null, status: this.ifId.valid ? 'normal' : 'bubble' },
@@ -706,7 +613,6 @@ export class MIPSPipelineEngine {
       WB: { instruction: this.memWb.valid ? this.memWb.instruction : null, status: this.memWb.valid ? this.memWb.status : 'bubble' },
     });
 
-    // Save history entry (circular buffer)
     this.history.push(this.takeHistoryEntry());
     if (this.history.length > MAX_HISTORY) {
       this.history.shift();
@@ -715,7 +621,6 @@ export class MIPSPipelineEngine {
     return this.takeSnapshot(consoleOutput, syscallResult);
   }
 
-  /** Run to completion or until maxCycles. Returns final snapshot. */
   runToCompletion(maxCycles?: number): CycleSnapshot {
     const limit = maxCycles ?? this.maxCycles;
     while (!this.finished && this.cycle < limit) {
@@ -726,11 +631,10 @@ export class MIPSPipelineEngine {
 
   stepBack(): CycleSnapshot | null {
     if (this.history.length <= 1) return null;
-    this.history.pop(); // Remove current
+    this.history.pop();
     const prev = this.history[this.history.length - 1];
     this.restoreFromHistory(prev);
 
-    // Also remove last cycle record
     if (this.cycleHistory.length > 0) {
       this.cycleHistory.pop();
     }
@@ -762,8 +666,6 @@ export class MIPSPipelineEngine {
     return this.memory;
   }
 
-  // ── Private Methods ────────────────────────────────────────────────
-
   private fetchInstruction(): IFIDLatch {
     const idx = this.pc / 4;
     if (idx < 0 || idx >= this.instructions.length) {
@@ -782,14 +684,12 @@ export class MIPSPipelineEngine {
 
   private detectLoadUseHazard(): boolean {
     if (!this.forwardingEnabled) {
-      // Without forwarding, any data dependency causes a stall
       if (this.idEx.valid && this.idEx.regWrite && this.idEx.writeReg > 0 && this.ifId.valid) {
         const inst = this.ifId.instruction!;
         for (const r of inst.readsRegs) {
           if (r === this.idEx.writeReg) return true;
         }
       }
-      // Also check EX/MEM
       if (this.exMem.valid && this.exMem.regWrite && this.exMem.writeReg > 0 && this.ifId.valid) {
         const inst = this.ifId.instruction!;
         for (const r of inst.readsRegs) {
@@ -798,8 +698,6 @@ export class MIPSPipelineEngine {
       }
       return false;
     }
-    // With forwarding, only load-use causes a stall
-    // Load in EX (idEx is load, result not available until MEM)
     if (this.idEx.valid && this.idEx.isLoad && this.idEx.writeReg > 0 && this.ifId.valid) {
       const inst = this.ifId.instruction!;
       for (const r of inst.readsRegs) {
@@ -811,11 +709,9 @@ export class MIPSPipelineEngine {
 
   private getIDStatus(
     inst: ParsedInstruction,
-    fwdA: 'ex' | 'mem' | null,
-    fwdB: 'ex' | 'mem' | null,
+    _fwdA: 'ex' | 'mem' | null,
+    _fwdB: 'ex' | 'mem' | null,
   ): InstructionStatus {
-    if (fwdA || fwdB) return 'forward';
-    // Check for raw hazard (dependency exists but not forwarded)
     if (this.idEx.valid && this.idEx.regWrite && this.idEx.writeReg > 0) {
       for (const r of inst.readsRegs) {
         if (r === this.idEx.writeReg) return 'hazard';
@@ -830,7 +726,6 @@ export class MIPSPipelineEngine {
   }
 
   private executeALU(op: string, a: number, b: number, shamt: number, actualHi: number, actualLo: number): number {
-    // All arithmetic is 32-bit signed
     switch (op) {
       case 'add': case 'addi': case 'addiu': case 'addu':
         return (a + b) | 0;
@@ -866,16 +761,16 @@ export class MIPSPipelineEngine {
       case 'multu':
       case 'div':
       case 'divu':
-        return 0; // Handled in EX stage
+        return 0;
       case 'mfhi':
         return actualHi;
       case 'mflo':
         return actualLo;
       case 'lw': case 'lh': case 'lhu': case 'lb': case 'lbu':
       case 'sw': case 'sh': case 'sb':
-        return (a + b) | 0; // Address calculation
+        return (a + b) | 0;
       case 'jal': case 'jalr':
-        return this.idEx.pc + 4; // Return address (PC + 4 since delay slots are not executed)
+        return this.idEx.pc + 8;
       case 'jr':
         return a;
       default:
@@ -994,7 +889,7 @@ export class MIPSPipelineEngine {
         rtVal: this.idEx.rtVal,
         imm: this.idEx.imm,
         aluResult: this.exMem.aluResult,
-        memData: this.memWb.memData, // from MEM stage
+        memData: this.memWb.memData,
         writeData: this.memWb.memToReg ? this.memWb.memData : this.memWb.aluResult,
       },
       stats: { ...this.stats },

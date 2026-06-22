@@ -22,6 +22,12 @@ import { AnalyticsPage } from './components/analytics/AnalyticsPage';
 import { GradingPage } from './components/grading/GradingPage';
 import { LearnPage } from './components/views/LearnPage';
 
+// Institutional Course Pages
+import { JoinCoursePage } from './components/courses/JoinCoursePage';
+import { CourseListPage } from './components/courses/CourseListPage';
+import { CourseDashboardPage } from './components/courses/CourseDashboardPage';
+import { AssignmentDetailPage } from './components/courses/AssignmentDetailPage';
+
 function App() {
   const { initialize } = useAuthStore();
   const { isActive } = useTutorialStore();
@@ -56,6 +62,19 @@ function App() {
         <Route path="/activity" element={<ActivityPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/learn" element={<LearnPage />} />
+        
+        {/* Course Routes */}
+        <Route path="/courses" element={<CourseListPage />} />
+        <Route path="/join" element={<JoinCoursePage />} />
+        <Route path="/courses/:courseId" element={<CourseDashboardPage />} />
+        <Route
+          path="/courses/:courseId/assignments/:assignmentId"
+          element={
+            <RoleRoute allowedRoles={['instructor']}>
+              <AssignmentDetailPage />
+            </RoleRoute>
+          }
+        />
 
         {/* Requires Pro or above — redirect to /pricing if not met */}
         <Route

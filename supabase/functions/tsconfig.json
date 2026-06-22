@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "lib": ["es2022", "dom"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "paths": {
+      "https://deno.land/std@0.168.0/http/server.ts": ["./types/server.ts"],
+      "https://esm.sh/@supabase/supabase-js@2": ["../../node_modules/@supabase/supabase-js"]
+    }
+  },
+  "include": [
+    "**/*.ts"
+  ]
+}

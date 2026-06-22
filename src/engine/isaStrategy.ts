@@ -52,7 +52,7 @@ export const MIPSStrategy: ISAStrategy = {
   },
 
   computeReturnAddress(pc: number): number {
-    return pc + 8; // MIPS: PC + 8 (two instructions ahead due to delay slot convention)
+    return pc + 4; // PC + 4 since delay slots are not executed
   },
 
   isImmediateALU(op: string): boolean {

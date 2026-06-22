@@ -2,6 +2,40 @@ import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../store/authStore';
 import type { EngineStats } from '../engine/pipelineEngine';
 
+const EVENTS_LOCAL_STORAGE_KEY = 'architecture_simulator_events';
+
+const getLocalEvents = (): any[] => {
+  try {
+    const raw = localStorage.getItem(EVENTS_LOCAL_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    console.error('Failed to read events from localStorage', e);
+    return [];
+  }
+};
+
+const saveLocalEvents = (events: any[]) => {
+  try {
+    localStorage.setItem(EVENTS_LOCAL_STORAGE_KEY, JSON.stringify(events));
+  } catch (e) {
+    console.error('Failed to write events to localStorage', e);
+  }
+};
+
+const isSchemaError = (error: any): boolean => {
+  if (!error) return false;
+  const msg = error.message?.toLowerCase() || '';
+  const code = error.code || '';
+  return (
+    msg.includes('schema cache') ||
+    msg.includes('does not exist') ||
+    msg.includes('relation') ||
+    code === '42P01' ||
+    code === 'PGRST204' ||
+    code === 'PGRST205'
+  );
+};
+
 // ── Event Logging ────────────────────────────────────────────────────────
 
 export const logSimulationEvent = async (eventType: 'assemble' | 'step') => {
@@ -19,6 +53,17 @@ export const logSimulationEvent = async (eventType: 'assemble' | 'step') => {
       ]);
     
     if (error) {
+      if (isSchemaError(error)) {
+        const local = getLocalEvents();
+        local.push({
+          id: self.crypto?.randomUUID ? self.crypto.randomUUID() : Math.random().toString(36).substring(2),
+          user_id: user.id,
+          event_type: eventType,
+          created_at: new Date().toISOString(),
+        });
+        saveLocalEvents(local);
+        return;
+      }
       console.error('Failed to log simulation event:', error);
     }
   } catch (err) {
@@ -43,7 +88,7 @@ export const logSimulationCompletion = async (
       ? stats.totalCycles / stats.instructionsCompleted
       : 0;
 
-    await supabase
+    const { error } = await supabase
       .from('simulation_events')
       .insert([{
         user_id: user.id,
@@ -59,6 +104,31 @@ export const logSimulationCompletion = async (
         forwarding_enabled: forwardingEnabled,
         program_hash: programHash || null,
       }]);
+
+    if (error) {
+      if (isSchemaError(error)) {
+        const local = getLocalEvents();
+        local.push({
+          id: self.crypto?.randomUUID ? self.crypto.randomUUID() : Math.random().toString(36).substring(2),
+          user_id: user.id,
+          event_type: 'assemble',
+          data_hazards: stats.dataStallCycles,
+          control_hazards: stats.controlStallCycles,
+          memory_stalls: stats.memoryStallCycles,
+          forward_count: stats.forwardCount,
+          stall_count: stats.stallCycles,
+          cpi: Math.round(cpi * 1000) / 1000,
+          cycles: stats.totalCycles,
+          instructions_completed: stats.instructionsCompleted,
+          forwarding_enabled: forwardingEnabled,
+          program_hash: programHash || null,
+          created_at: new Date().toISOString(),
+        });
+        saveLocalEvents(local);
+        return;
+      }
+      console.error('Failed to log simulation completion:', error);
+    }
   } catch (err) {
     console.error('Error logging simulation completion:', err);
   }
@@ -88,17 +158,25 @@ export const getUserActivityMetrics = async (userId: string): Promise<{ metrics:
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
+    let finalEvents = events;
     if (error) {
-      console.error('Error fetching activity events:', error);
-      return { metrics: null, error: error.message };
+      if (isSchemaError(error)) {
+        console.warn('Supabase simulation_events table not found, falling back to localStorage');
+        finalEvents = getLocalEvents()
+          .filter((e) => e.user_id === userId)
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      } else {
+        console.error('Error fetching activity events:', error);
+        return { metrics: null, error: error.message };
+      }
     }
 
-    if (!events) return { metrics: null, error: 'No events array returned' };
+    if (!finalEvents) return { metrics: null, error: 'No events array returned' };
 
-    const simulationsRun = events.filter(e => e.event_type === 'assemble').length;
+    const simulationsRun = finalEvents.filter(e => e.event_type === 'assemble').length;
     const eventsByDate = new Map<string, number>();
     
-    events.forEach(event => {
+    finalEvents.forEach(event => {
       const date = new Date(event.created_at);
       const dateString = getLocalDateString(date);
       eventsByDate.set(dateString, (eventsByDate.get(dateString) || 0) + 1);
@@ -185,10 +263,22 @@ export const getAnalyticsData = async (userId: string): Promise<{
       .order('created_at', { ascending: true })
       .limit(100);
 
-    if (error) return { sessions: [], error: error.message };
-    if (!data || data.length === 0) return { sessions: [], error: null };
+    let finalData = data;
+    if (error) {
+      if (isSchemaError(error)) {
+        console.warn('Supabase simulation_events table not found, falling back to localStorage');
+        finalData = getLocalEvents()
+          .filter((e) => e.user_id === userId && e.event_type === 'assemble' && e.cpi !== null && e.cpi !== undefined)
+          .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+          .slice(0, 100);
+      } else {
+        return { sessions: [], error: error.message };
+      }
+    }
 
-    const sessions: AnalyticsSession[] = data.map((row, i) => ({
+    if (!finalData || finalData.length === 0) return { sessions: [], error: null };
+
+    const sessions: AnalyticsSession[] = finalData.map((row, i) => ({
       id: `s${i}`,
       date: row.created_at,
       cpi: Number(row.cpi) || 1,
@@ -234,8 +324,18 @@ export const getConceptMasteryData = async (userId: string): Promise<{
       .eq('event_type', 'assemble')
       .not('cpi', 'is', null);
 
-    if (error) return { concepts: getDefaultConcepts(), error: error.message };
-    if (!data || data.length === 0) return { concepts: getDefaultConcepts(), error: null };
+    let finalData = data;
+    if (error) {
+      if (isSchemaError(error)) {
+        console.warn('Supabase simulation_events table not found, falling back to localStorage');
+        finalData = getLocalEvents()
+          .filter((e) => e.user_id === userId && e.event_type === 'assemble' && e.cpi !== null && e.cpi !== undefined);
+      } else {
+        return { concepts: getDefaultConcepts(), error: error.message };
+      }
+    }
+
+    if (!finalData || finalData.length === 0) return { concepts: getDefaultConcepts(), error: null };
 
     // Aggregate counts
     let totalDataHazards = 0;
@@ -247,7 +347,7 @@ export const getConceptMasteryData = async (userId: string): Promise<{
     let totalCpiSum = 0;
     const recentCpis: number[] = [];
 
-    data.forEach(row => {
+    finalData.forEach(row => {
       totalDataHazards += row.data_hazards || 0;
       totalControlHazards += row.control_hazards || 0;
       totalMemoryStalls += row.memory_stalls || 0;
@@ -260,11 +360,11 @@ export const getConceptMasteryData = async (userId: string): Promise<{
     });
 
     // Sessions where each concept was exercised
-    const dataHazardSessions = data.filter(r => (r.data_hazards || 0) > 0).length;
-    const controlHazardSessions = data.filter(r => (r.control_hazards || 0) > 0).length;
-    const forwardingSessions = data.filter(r => (r.forward_count || 0) > 0).length;
-    const memSessions = data.filter(r => (r.memory_stalls || 0) > 0).length;
-    const loadUseSessions = data.filter(r => (r.data_hazards || 0) > 0 && (r.stall_count || 0) > 0).length;
+    const dataHazardSessions = finalData.filter(r => (r.data_hazards || 0) > 0).length;
+    const controlHazardSessions = finalData.filter(r => (r.control_hazards || 0) > 0).length;
+    const forwardingSessions = finalData.filter(r => (r.forward_count || 0) > 0).length;
+    const memSessions = finalData.filter(r => (r.memory_stalls || 0) > 0).length;
+    const loadUseSessions = finalData.filter(r => (r.data_hazards || 0) > 0 && (r.stall_count || 0) > 0).length;
 
     // Check if CPI is improving over time (last 5 sessions)
     const last5 = recentCpis.slice(-5);
@@ -327,10 +427,10 @@ export const getConceptMasteryData = async (userId: string): Promise<{
         id: 'optimization',
         name: 'Code Optimization',
         description: 'Writing efficient code that minimizes CPI and stalls',
-        exercised: data.length,
-        mastered: cpiImproving && data.length >= 10,
+        exercised: finalData.length,
+        mastered: cpiImproving && finalData.length >= 10,
         icon: '🚀',
-        weakSpot: !cpiImproving && data.length >= 5
+        weakSpot: !cpiImproving && finalData.length >= 5
           ? 'Your CPI trend is flat or increasing. Try reordering instructions to reduce stalls and improve efficiency.'
           : undefined,
       },
@@ -360,21 +460,28 @@ import type { AssignmentProfile } from '../engine/assignmentProfile';
 
 export const saveAssignmentToSupabase = async (assignment: AssignmentProfile, userId: string): Promise<{ error: string | null }> => {
   try {
+    const visibleTestCases = assignment.testCases.filter(tc => !tc.hidden);
+    const hiddenTestCases = assignment.testCases.filter(tc => !!tc.hidden);
+
     const { error } = await supabase
       .from('assignments')
       .upsert([{
         id: assignment.id,
-        user_id: userId,
+        instructor_id: userId,
         title: assignment.title,
         description: assignment.description,
-        specification: assignment.specification || '',
         difficulty: assignment.difficulty,
         starter_code: assignment.starterCode,
         blocked_instructions: assignment.blockedInstructions || [],
-        due_date: assignment.dueDate || null,
-        time_limit: assignment.timeLimit || null,
-        rubric: assignment.rubric,
-        test_cases: assignment.testCases,
+        due_at: assignment.dueDate || null,
+        rubric_correctness: assignment.rubric.correctness,
+        rubric_efficiency: assignment.rubric.efficiency,
+        rubric_style: assignment.rubric.style,
+        visible_test_cases: visibleTestCases,
+        hidden_test_cases: hiddenTestCases,
+        late_penalty_pct: assignment.latePenaltyPct || 0,
+        max_attempts: assignment.maxAttempts || -1,
+        max_cycles_limit: assignment.maxCyclesLimit || 10000,
         updated_at: new Date().toISOString(),
       }]);
 
@@ -394,7 +501,7 @@ export const loadAssignmentsFromSupabase = async (userId: string): Promise<{
     const { data, error } = await supabase
       .from('assignments')
       .select('*')
-      .eq('user_id', userId)
+      .eq('instructor_id', userId)
       .order('updated_at', { ascending: false });
 
     if (error) return { assignments: [], error: error.message };
@@ -404,14 +511,22 @@ export const loadAssignmentsFromSupabase = async (userId: string): Promise<{
       id: row.id,
       title: row.title,
       description: row.description || '',
-      specification: row.specification || '',
       difficulty: row.difficulty || 'Intermediate',
       starterCode: row.starter_code || '',
       blockedInstructions: row.blocked_instructions || [],
-      dueDate: row.due_date || undefined,
-      timeLimit: row.time_limit || undefined,
-      rubric: row.rubric || { correctness: 50, efficiency: 30, style: 20 },
-      testCases: row.test_cases || [],
+      dueDate: row.due_at || undefined,
+      rubric: {
+        correctness: row.rubric_correctness ?? 70,
+        efficiency: row.rubric_efficiency ?? 20,
+        style: row.rubric_style ?? 10
+      },
+      testCases: [
+        ...(row.visible_test_cases || []),
+        ...(row.hidden_test_cases || []).map((tc: any) => ({ ...tc, hidden: true }))
+      ],
+      latePenaltyPct: row.late_penalty_pct || 0,
+      maxAttempts: row.max_attempts || -1,
+      maxCyclesLimit: row.max_cycles_limit || 10000,
     }));
 
     return { assignments, error: null };
