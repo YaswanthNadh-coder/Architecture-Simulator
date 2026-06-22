@@ -8,7 +8,6 @@ export const Sidebar = () => {
   const { profile, logout } = useAuthStore();
   const { tier, canAccess } = useSubscriptionStore();
   
-  const isInstructor = profile?.role === 'instructor';
 
   // Extract initials for the avatar
   const initials = profile?.full_name 
@@ -27,12 +26,7 @@ export const Sidebar = () => {
       label: 'Analytics',
       locked: !canAccess('analyticsDashboard'),
     },
-    // Only show grading link for instructors
-    ...(isInstructor ? [{
-      icon: <GraduationCap size={22} />,
-      path: '/grading',
-      label: 'Grading',
-    }] : []),
+    { icon: <GraduationCap size={22} />, path: '/courses', label: 'Courses' },
   ];
 
   const bottomItems = [
