@@ -336,7 +336,8 @@ export const GradingPage = () => {
 
           {activeSection === 'builder' && (
             <motion.div key="builder" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
-              <AssignmentBuilder 
+              <AssignmentBuilder
+                key={editingAssignmentId || 'new'}
                 initial={editingAssignmentId ? allAssignments.find(a => a.id === editingAssignmentId) : undefined}
                 onSave={(newAssig) => {
                   const exists = customAssignments.some(a => a.id === newAssig.id);

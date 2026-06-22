@@ -22,7 +22,7 @@ export const TutorialSystem = () => {
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
 
   const lesson = getCurrentLesson();
-  const step = lesson?.steps[currentStepIndex];
+  const step = lesson?.steps?.[currentStepIndex];
   const isLastStep = lesson && currentStepIndex === lesson.steps.length - 1;
 
   // Initialize lesson state when it starts

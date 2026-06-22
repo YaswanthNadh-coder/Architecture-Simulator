@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Plus, Trash2, GripVertical, FileText, BarChart3, TestTubes,
   Code2, Eye, Shield, Calendar, Clock, ChevronRight, ChevronLeft,
@@ -9,6 +9,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 // ── Helper to generate IDs ──────────────────────────────────────────────
 const genId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+
+const DEFAULT_STARTER_CODE = `# Student code goes here\n.text\nmain:\n  # Your code here\n  \n  li $v0, 10\n  syscall\n`;
 
 // ── Tab Steps ────────────────────────────────────────────────────────────
 const WIZARD_STEPS = ['Specification', 'Rubric', 'Test Cases', 'Starter Code', 'Review'] as const;
@@ -39,7 +41,7 @@ export const AssignmentBuilder = ({ initial, onSave, onCancel }: Props) => {
   const [description, setDescription] = useState(initial?.description || '');
   const [specification, setSpecification] = useState(initial?.specification || '');
   const [difficulty, setDifficulty] = useState<'Beginner' | 'Intermediate' | 'Advanced'>(initial?.difficulty || 'Intermediate');
-  const [starterCode, setStarterCode] = useState(initial?.starterCode || `# Student code goes here\n.text\nmain:\n  # Your code here\n  \n  li $v0, 10\n  syscall\n`);
+  const [starterCode, setStarterCode] = useState(initial?.starterCode || DEFAULT_STARTER_CODE);
   const [blockedInstructions, setBlockedInstructions] = useState<string[]>(initial?.blockedInstructions || []);
   const [dueDate, setDueDate] = useState(initial?.dueDate || '');
   const [timeLimit, setTimeLimit] = useState(initial?.timeLimit || 0);
@@ -49,6 +51,25 @@ export const AssignmentBuilder = ({ initial, onSave, onCancel }: Props) => {
   const [latePenaltyPct, setLatePenaltyPct] = useState(initial?.latePenaltyPct || 0);
   const [maxAttempts, setMaxAttempts] = useState(initial?.maxAttempts || -1);
   const [maxCyclesLimit, setMaxCyclesLimit] = useState(initial?.maxCyclesLimit || 10000);
+
+  // Reset all form state when the initial assignment changes (e.g. user clicks Edit on a different assignment)
+  useEffect(() => {
+    setCurrentStep('Specification');
+    setTitle(initial?.title || '');
+    setDescription(initial?.description || '');
+    setSpecification(initial?.specification || '');
+    setDifficulty(initial?.difficulty || 'Intermediate');
+    setStarterCode(initial?.starterCode || DEFAULT_STARTER_CODE);
+    setBlockedInstructions(initial?.blockedInstructions || []);
+    setDueDate(initial?.dueDate || '');
+    setTimeLimit(initial?.timeLimit || 0);
+    setTestCases(initial?.testCases || []);
+    setRubric(initial?.rubric || { correctness: 50, efficiency: 30, style: 20 });
+    setNewBlockedInstr('');
+    setLatePenaltyPct(initial?.latePenaltyPct || 0);
+    setMaxAttempts(initial?.maxAttempts || -1);
+    setMaxCyclesLimit(initial?.maxCyclesLimit || 10000);
+  }, [initial?.id]);
 
   const stepIndex = WIZARD_STEPS.indexOf(currentStep);
   const canPrev = stepIndex > 0;
