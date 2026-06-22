@@ -10,7 +10,7 @@ export interface CacheConfig {
 export interface CacheLine {
   valid: boolean;
   tag: number;
-  lru: number; // For LRU/FIFO replacement policy (higher is more recently used / newer)
+  lru: number; // For LRU replacement policy (higher is more recently used)
   dirty: boolean;
 }
 
@@ -96,11 +96,7 @@ export class CacheSimulator {
     for (let i = 0; i < set.length; i++) {
       if (set[i].valid && set[i].tag === tag) {
         // Hit
-        const policy = this.config.policy || 'lru';
-        if (policy === 'lru') {
-          set[i].lru = this.lruCounter;
-        }
-        // Note: For FIFO, we don't update set[i].lru on hit, keeping the original load order.
+        set[i].lru = this.lruCounter;
         if (isWrite) set[i].dirty = true;
         this.stats.hits++;
         return { hit: true, stallCycles: 0 }; // L1 hit is usually 1 cycle (no stall)
@@ -128,7 +124,10 @@ export class CacheSimulator {
         victimIdx = Math.floor(Math.random() * set.length);
       }
     } else if (policy === 'fifo') {
-      // For FIFO, we replace the block with the smallest LRU value (acting as insertion order counter)
+      // For FIFO, we replace the block with the smallest LRU value (acting as insertion order counter if we only increment LRU on insertion)
+      // Since our lruCounter increments, the one inserted longest ago will have the lowest 'lru' value,
+      // provided we only update lru on replacement/insertion, not on hits.
+      // Let's implement FIFO this way:
       let minLru = Infinity;
       for (let i = 0; i < set.length; i++) {
         if (!set[i].valid) {
@@ -159,6 +158,7 @@ export class CacheSimulator {
     set[victimIdx] = {
       valid: true,
       tag: tag,
+      // For FIFO/LRU, set's initial counter value is lruCounter
       lru: this.lruCounter,
       dirty: isWrite,
     };
