@@ -234,6 +234,7 @@ export class MIPSPipelineEngine {
   public branchPrediction: 'not-taken' | 'always-taken' = 'not-taken';
   public memoryLatency = 0;
   public maxCycles = 10000;
+  public isa: 'mips' | 'riscv' = 'mips';
   
   // Cache
   public cache = new CacheSimulator({
@@ -341,8 +342,8 @@ export class MIPSPipelineEngine {
 
     // Handle syscall in WB stage
     if (this.memWb.valid && this.memWb.isSyscall) {
-      // Check MIPS v0 (reg 2) or RISC-V a7 (reg 17)
-      const v0 = this.registers[17] !== 0 ? this.registers[17] : this.registers[2];
+      // Use MIPS v0 (reg 2) or RISC-V a7 (reg 17)
+      const v0 = this.isa === 'riscv' ? this.registers[17] : this.registers[2];
       syscallResult = handleSyscall(v0, this.registers, this.memory);
       consoleOutput = syscallResult.outputText;
 
@@ -418,7 +419,7 @@ export class MIPSPipelineEngine {
         this.terminationReason = 'normal';
         consoleOutput = 'Breakpoint encountered (ebreak).\n';
       } else {
-        const v0 = this.registers[17] !== 0 ? this.registers[17] : this.registers[2];
+        const v0 = this.isa === 'riscv' ? this.registers[17] : this.registers[2];
         syscallResult = handleSyscall(v0, this.registers, this.memory);
         consoleOutput = syscallResult.outputText;
 

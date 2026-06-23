@@ -45,6 +45,7 @@ export const SYSCALL = {
   READ_CHAR: 12,
   EXIT2: 17,
   PRINT_HEX: 34,
+  EXIT_RISCV: 93,
 } as const;
 
 // ── Default IO (silent / headless) ───────────────────────────────────────
@@ -111,7 +112,9 @@ export function handleSyscall(
     }
 
     case SYSCALL.EXIT:
-    case SYSCALL.EXIT2: {
+    case SYSCALL.EXIT2:
+    case SYSCALL.EXIT_RISCV: {
+      // Exit
       result.exit = true;
       break;
     }

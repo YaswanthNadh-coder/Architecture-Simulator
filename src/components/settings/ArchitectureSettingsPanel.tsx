@@ -6,10 +6,11 @@ import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { generateReport } from '../../lib/reportGenerator';
 import { MIPSPipelineEngine } from '../../engine/pipelineEngine';
 
-const calculateCPIForForwarding = (instructions: any[], forwarding: boolean): number => {
+const calculateCPIForForwarding = (instructions: any[], forwarding: boolean, isa: 'mips' | 'riscv'): number => {
   if (!instructions || instructions.length === 0) return 0;
   const testEngine = new MIPSPipelineEngine();
   testEngine.forwardingEnabled = forwarding;
+  testEngine.isa = isa;
   testEngine.loadProgram(instructions);
   
   let cycles = 0;
@@ -35,9 +36,9 @@ const ForwardingImpactWidget = () => {
   }
 
   // Calculate CPI with forwarding
-  const cpiWith = calculateCPIForForwarding(instructions, true);
+  const cpiWith = calculateCPIForForwarding(instructions, true, useSimulatorStore.getState().isa);
   // Calculate CPI without forwarding
-  const cpiWithout = calculateCPIForForwarding(instructions, false);
+  const cpiWithout = calculateCPIForForwarding(instructions, false, useSimulatorStore.getState().isa);
 
   const diffPercent = cpiWithout > 0 ? ((cpiWithout - cpiWith) / cpiWithout) * 100 : 0;
 

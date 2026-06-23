@@ -297,6 +297,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
     engine.branchPrediction = branchPrediction;
     engine.memoryLatency = memoryLatency;
     engine.cache.updateConfig(cacheConfig);
+    engine.isa = isa;
     engine.loadProgram(result.instructions);
     engine.loadDataSegment(result.dataSegment);
 

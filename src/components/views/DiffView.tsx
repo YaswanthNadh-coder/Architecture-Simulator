@@ -6,7 +6,7 @@ import { AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 export const DiffView = () => {
-  const { code } = useSimulatorStore();
+  const { code, isa } = useSimulatorStore();
   
   const [statsOn, setStatsOn] = useState<{ total: number; stalls: number; instrs: number; regs: Int32Array; mem: Map<number, number> } | null>(null);
   const [statsOff, setStatsOff] = useState<{ total: number; stalls: number; instrs: number; regs: Int32Array; mem: Map<number, number> } | null>(null);
@@ -36,6 +36,7 @@ export const DiffView = () => {
 
         // Run Option A (Optimized: Forwarding ON or Always Taken)
         const engineOn = new MIPSPipelineEngine();
+        engineOn.isa = isa;
         if (comparisonType === 'forwarding') {
           engineOn.forwardingEnabled = true;
           engineOn.branchPrediction = 'not-taken';
@@ -57,6 +58,7 @@ export const DiffView = () => {
 
         // Run Option B (Baseline: Forwarding OFF or Not Taken)
         const engineOff = new MIPSPipelineEngine();
+        engineOff.isa = isa;
         if (comparisonType === 'forwarding') {
           engineOff.forwardingEnabled = false;
           engineOff.branchPrediction = 'not-taken';
