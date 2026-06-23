@@ -544,8 +544,7 @@ export function assemble(code: string, options?: AssembleOptions): ParseResult {
     // Check for label: .data or label: .text patterns
     const withoutLabel = rawLine.text.replace(/^\w+:\s*/, '').trim().toLowerCase();
 
-    if (withoutLabel === '.data') {
-      // If there's a label before .data, add it to the data section
+    if (withoutLabel === '.data' || withoutLabel === '.section .data') {
       const labelMatch = rawLine.text.match(/^(\w+):\s*/);
       if (labelMatch) {
         dataLines.push({ text: `${labelMatch[1]}:`, line: rawLine.line });
@@ -553,7 +552,7 @@ export function assemble(code: string, options?: AssembleOptions): ParseResult {
       currentSection = 'data';
       continue;
     }
-    if (withoutLabel === '.text') {
+    if (withoutLabel === '.text' || withoutLabel === '.section .text') {
       const labelMatch = rawLine.text.match(/^(\w+):\s*/);
       if (labelMatch) {
         textLines.push({ text: `${labelMatch[1]}:`, line: rawLine.line });
@@ -561,7 +560,7 @@ export function assemble(code: string, options?: AssembleOptions): ParseResult {
       currentSection = 'text';
       continue;
     }
-    if (withoutLabel.startsWith('.globl')) {
+    if (withoutLabel.startsWith('.globl') || withoutLabel.startsWith('.global')) {
       continue; // skip .globl directives
     }
 

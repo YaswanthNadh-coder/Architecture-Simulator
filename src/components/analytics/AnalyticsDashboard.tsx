@@ -25,13 +25,6 @@ export const AnalyticsDashboard = () => {
     }
   }, [profile]);
 
-  if (loading) return <div className="p-8 text-text-muted">Loading analytics...</div>;
-  if (sessions.length === 0) return <div className="p-8 text-text-muted">Run some simulations to generate analytics data!</div>;
-
-  const latest = sessions[sessions.length - 1];
-  const previous = sessions.length > 1 ? sessions[sessions.length - 2] : latest;
-  const cpiTrend = latest.cpi <= previous.cpi ? 'improving' : 'degrading';
-
   const avgCpi = useMemo(() => {
     if (sessions.length === 0) return 0;
     const sum = sessions.reduce((a, s) => a + s.cpi, 0);
@@ -63,6 +56,8 @@ export const AnalyticsDashboard = () => {
 
   // SVG sparkline for CPI trend
   const sparklinePoints = useMemo(() => {
+    if (sessions.length === 0) return '';
+    if (sessions.length === 1) return '10,25 290,25'; // Flat line for single session
     const maxCpi = Math.max(...sessions.map(s => s.cpi));
     const minCpi = Math.min(...sessions.map(s => s.cpi));
     const range = maxCpi - minCpi || 1;
@@ -72,6 +67,13 @@ export const AnalyticsDashboard = () => {
       return `${x},${y}`;
     }).join(' ');
   }, [sessions]);
+
+  if (loading) return <div className="p-8 text-text-muted">Loading analytics...</div>;
+  if (sessions.length === 0) return <div className="p-8 text-text-muted">Run some simulations to generate analytics data!</div>;
+
+  const latest = sessions[sessions.length - 1];
+  const previous = sessions.length > 1 ? sessions[sessions.length - 2] : latest;
+  const cpiTrend = latest.cpi <= previous.cpi ? 'improving' : 'degrading';
 
   return (
     <div className="space-y-6">

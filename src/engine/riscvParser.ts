@@ -130,9 +130,26 @@ const RV_INSTRUCTIONS: Record<string, RVInstructionDef> = {
   // Jump register: jalr rd, rs1, offset
   'jalr':  { format: 'I', writesRd: true, isJump: true, isJumpReg: true },
 
-  // System
-  'ecall': { format: 'ECALL', isSyscall: true },
-  'nop':   { format: 'NOP' },
+  // M-extension (RV32M)
+  'mul':     { format: 'R', writesRd: true },
+  'mulh':    { format: 'R', writesRd: true },
+  'mulhsu':  { format: 'R', writesRd: true },
+  'mulhu':   { format: 'R', writesRd: true },
+  'div':     { format: 'R', writesRd: true },
+  'divu':    { format: 'R', writesRd: true },
+  'rem':     { format: 'R', writesRd: true },
+  'remu':    { format: 'R', writesRd: true },
+
+  // System and CSR
+  'ecall':   { format: 'ECALL', isSyscall: true },
+  'ebreak':  { format: 'ECALL' }, // Usually handled similarly in pipeline (WB/EX)
+  'nop':     { format: 'NOP' },
+  'csrrw':   { format: 'CSR', writesRd: true },
+  'csrrs':   { format: 'CSR', writesRd: true },
+  'csrrc':   { format: 'CSR', writesRd: true },
+  'csrrwi':  { format: 'CSR_I', writesRd: true },
+  'csrrsi':  { format: 'CSR_I', writesRd: true },
+  'csrrci':  { format: 'CSR_I', writesRd: true },
 };
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -370,6 +387,39 @@ function expandPseudoInstructions(lines: RawLine[], allLabels: Map<string, numbe
       case 'bleu':
         expanded.push({ text: `${labelPrefix}bgeu ${operands[1]}, ${operands[0]}, ${operands[2]}`, line });
         break;
+      case 'sltz':
+        expanded.push({ text: `${labelPrefix}slt ${operands[0]}, ${operands[1]}, zero`, line });
+        break;
+      case 'sgtz':
+        expanded.push({ text: `${labelPrefix}slt ${operands[0]}, zero, ${operands[1]}`, line });
+        break;
+      case 'bltz':
+        expanded.push({ text: `${labelPrefix}blt ${operands[0]}, zero, ${operands[1]}`, line });
+        break;
+      case 'blez':
+        expanded.push({ text: `${labelPrefix}bge zero, ${operands[0]}, ${operands[1]}`, line });
+        break;
+      case 'bgtz':
+        expanded.push({ text: `${labelPrefix}blt zero, ${operands[0]}, ${operands[1]}`, line });
+        break;
+      case 'bgez':
+        expanded.push({ text: `${labelPrefix}bge ${operands[0]}, zero, ${operands[1]}`, line });
+        break;
+      case 'tail':
+        expanded.push({ text: `${labelPrefix}jal zero, ${operands[0]}`, line });
+        break;
+      case 'csrr':
+        expanded.push({ text: `${labelPrefix}csrrs ${operands[0]}, ${operands[1]}, zero`, line });
+        break;
+      case 'csrw':
+        expanded.push({ text: `${labelPrefix}csrrw zero, ${operands[0]}, ${operands[1]}`, line });
+        break;
+      case 'csrs':
+        expanded.push({ text: `${labelPrefix}csrrs zero, ${operands[0]}, ${operands[1]}`, line });
+        break;
+      case 'csrc':
+        expanded.push({ text: `${labelPrefix}csrrc zero, ${operands[0]}, ${operands[1]}`, line });
+        break;
       case 'not':
         expanded.push({ text: `${labelPrefix}xori ${operands[0]}, ${operands[1]}, -1`, line });
         break;
@@ -443,12 +493,12 @@ export function assembleRISCV(code: string, options?: AssembleOptions): ParseRes
 
   for (const rawLine of allLines) {
     const withoutLabel = rawLine.text.replace(/^\w+:\s*/, '').trim().toLowerCase();
-    if (withoutLabel === '.data') {
+    if (withoutLabel === '.data' || withoutLabel === '.section .data') {
       const labelMatch = rawLine.text.match(/^(\w+):\s*/);
       if (labelMatch) dataLines.push({ text: `${labelMatch[1]}:`, line: rawLine.line });
       currentSection = 'data'; continue;
     }
-    if (withoutLabel === '.text') {
+    if (withoutLabel === '.text' || withoutLabel === '.section .text') {
       const labelMatch = rawLine.text.match(/^(\w+):\s*/);
       if (labelMatch) textLines.push({ text: `${labelMatch[1]}:`, line: rawLine.line });
       currentSection = 'text'; continue;
@@ -528,7 +578,7 @@ function parseSingleRVInstruction(
   labels: Map<string, number>, errors: ParseError[]
 ): ParsedInstruction | null {
   const parts = text.split(/\s+/);
-  const op = parts[0].toLowerCase();
+  let op = parts[0].toLowerCase();
   const operandStr = parts.slice(1).join(' ');
   const operands = splitOperands(operandStr);
 
@@ -567,8 +617,23 @@ function parseSingleRVInstruction(
         // op rd, rs1, shamt
         rd = requireReg(operands[0], line, errors);
         rs = requireReg(operands[1], line, errors);
-        shamt = requireImm(operands[2], line, errors) & 0x1F;
+        shamt = requireImm(operands[2], line, errors);
         if (rs >= 0) readsRegs.push(rs);
+        break;
+      }
+      case 'CSR': {
+        // csrrw rd, csr, rs1
+        rd = requireReg(operands[0], line, errors);
+        imm = requireImm(operands[1], line, errors); // CSR is the imm
+        rs = requireReg(operands[2], line, errors);
+        if (rs >= 0) readsRegs.push(rs);
+        break;
+      }
+      case 'CSR_I': {
+        // csrrwi rd, csr, zimm
+        rd = requireReg(operands[0], line, errors);
+        imm = requireImm(operands[1], line, errors); // CSR is the imm
+        rs = requireImm(operands[2], line, errors); // Immediate value encoded in rs field
         break;
       }
       case 'LOAD': {
@@ -608,6 +673,10 @@ function parseSingleRVInstruction(
         } else if (op === 'auipc') {
           imm = (address + (imm << 12)) | 0; // PC + (imm << 12)
         }
+        // Map to addi so the engine just does rd = 0 + imm
+        op = 'addi';
+        rs = 0; // zero register
+        readsRegs.push(0);
         break;
       }
       case 'J': {

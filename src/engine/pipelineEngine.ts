@@ -213,6 +213,7 @@ export class MIPSPipelineEngine {
   private memory = new Map<number, number>();
   private initialMemory = new Map<number, number>();
   private pc = 0;
+  public csrRegisters = new Map<number, number>();
   private hi = 0;
   private lo = 0;
   private cycle = 0;
@@ -276,8 +277,10 @@ export class MIPSPipelineEngine {
   reset(): void {
     this.registers = new Int32Array(32);
     this.registers[28] = 0x10008000; // $gp
-    this.registers[29] = 0x7FFFFFFC; // $sp
+    this.registers[29] = 0x7FFFFFFC; // $sp (MIPS)
+    this.registers[2] = 0x7FFFFFFC;  // sp (RISC-V)
     this.memory = new Map(this.initialMemory);
+    this.csrRegisters.clear();
     this.pc = 0;
     this.hi = 0;
     this.lo = 0;
@@ -338,7 +341,8 @@ export class MIPSPipelineEngine {
 
     // Handle syscall in WB stage
     if (this.memWb.valid && this.memWb.isSyscall) {
-      const v0 = this.registers[2]; // $v0
+      // Check MIPS v0 (reg 2) or RISC-V a7 (reg 17)
+      const v0 = this.registers[17] !== 0 ? this.registers[17] : this.registers[2];
       syscallResult = handleSyscall(v0, this.registers, this.memory);
       consoleOutput = syscallResult.outputText;
 
@@ -407,23 +411,29 @@ export class MIPSPipelineEngine {
       this.lo = this.memWb.loResult;
     }
 
-    // Handle syscall in WB stage
+    // Handle syscall and ebreak in WB stage
     if (this.memWb.valid && this.memWb.isSyscall) {
-      const v0 = this.registers[2]; // $v0
-      syscallResult = handleSyscall(v0, this.registers, this.memory);
-      consoleOutput = syscallResult.outputText;
-
-      // Apply register writes from syscall
-      for (const [reg, val] of syscallResult.registerWrites) {
-        this.registers[reg] = val;
-      }
-
-      if (syscallResult.exit) {
+      if (this.memWb.op === 'ebreak') {
         this.finished = true;
         this.terminationReason = 'normal';
-      }
+        consoleOutput = 'Breakpoint encountered (ebreak).\n';
+      } else {
+        const v0 = this.registers[17] !== 0 ? this.registers[17] : this.registers[2];
+        syscallResult = handleSyscall(v0, this.registers, this.memory);
+        consoleOutput = syscallResult.outputText;
 
-      this.events.onSyscall?.(v0, syscallResult);
+        // Apply register writes from syscall
+        for (const [reg, val] of syscallResult.registerWrites) {
+          this.registers[reg] = val;
+        }
+
+        if (syscallResult.exit) {
+          this.finished = true;
+          this.terminationReason = 'normal';
+        }
+
+        this.events.onSyscall?.(v0, syscallResult);
+      }
     }
 
     // ── 4. Memory stage ────────────────────────────────────────────
@@ -431,7 +441,7 @@ export class MIPSPipelineEngine {
       instruction: this.exMem.instruction,
       pc: this.exMem.pc,
       aluResult: this.exMem.aluResult,
-      memData: this.exMem.memRead ? this.readMemWord(this.exMem.aluResult) : 0,
+      memData: this.exMem.memRead ? this.readMemByOp(this.exMem.op, this.exMem.aluResult) : 0,
       writeReg: this.exMem.writeReg,
       regWrite: this.exMem.regWrite,
       memToReg: this.exMem.memToReg,
@@ -499,7 +509,7 @@ export class MIPSPipelineEngine {
       const aluInput2 = (this.idEx.isLoad || this.idEx.isStore || this.idEx.op === 'addi' ||
         this.idEx.op === 'addiu' || this.idEx.op === 'andi' || this.idEx.op === 'ori' ||
         this.idEx.op === 'xori' || this.idEx.op === 'slti' || this.idEx.op === 'sltiu' ||
-        this.idEx.op === 'lui')
+        this.idEx.op === 'lui' || this.idEx.op.startsWith('csr'))
         ? this.idEx.imm
         : bVal;
 
@@ -579,6 +589,23 @@ export class MIPSPipelineEngine {
         branchTaken = true;
         branchTarget = this.idEx.isJumpReg ? aVal : this.idEx.instruction!.targetAddress;
         this.stats.flushCount++;
+      }
+
+      // CSR Operations (executed locally in EX)
+      if (this.idEx.op.startsWith('csr')) {
+        const csrAddr = this.idEx.imm; // CSR address is usually parsed as imm in I-type
+        const oldVal = this.csrRegisters.get(csrAddr) ?? 0;
+        let newVal = oldVal;
+        
+        const isImm = this.idEx.op.endsWith('i');
+        const writeVal = isImm ? this.idEx.rs : aVal; // For immediate CSR, rs field holds the zimm
+
+        if (this.idEx.op.includes('rw')) newVal = writeVal;
+        else if (this.idEx.op.includes('rs') && writeVal !== 0) newVal = oldVal | writeVal;
+        else if (this.idEx.op.includes('rc') && writeVal !== 0) newVal = oldVal & ~writeVal;
+
+        this.csrRegisters.set(csrAddr, newVal);
+        // aluResult already captures oldVal if executeALU is updated
       }
 
       let exStatus: InstructionStatus = this.idEx.status;
@@ -848,11 +875,11 @@ export class MIPSPipelineEngine {
         return (a < b) ? 1 : 0;
       case 'sltu': case 'sltiu':
         return ((a >>> 0) < (b >>> 0)) ? 1 : 0;
-      case 'sll':
+      case 'sll': case 'slli':
         return (a << shamt) | 0;
-      case 'srl':
+      case 'srl': case 'srli':
         return (a >>> shamt) | 0;
-      case 'sra':
+      case 'sra': case 'srai':
         return (a >> shamt) | 0;
       case 'sllv':
         return (b << (a & 0x1F)) | 0;
@@ -864,13 +891,30 @@ export class MIPSPipelineEngine {
         return (b << 16) | 0;
       case 'mult':
       case 'multu':
-      case 'div':
-      case 'divu':
         return 0; // Handled in EX stage
       case 'mfhi':
         return actualHi;
       case 'mflo':
         return actualLo;
+      
+      // RV32M Extensions
+      case 'mul': return Number((BigInt(a) * BigInt(b)) & 0xFFFFFFFFn) | 0;
+      case 'mulh': return Number(((BigInt(a) * BigInt(b)) >> 32n) & 0xFFFFFFFFn) | 0;
+      case 'mulhsu': return Number(((BigInt(a) * BigInt(b >>> 0)) >> 32n) & 0xFFFFFFFFn) | 0;
+      case 'mulhu': return Number(((BigInt(a >>> 0) * BigInt(b >>> 0)) >> 32n) & 0xFFFFFFFFn) | 0;
+      case 'div': return b === 0 ? -1 : ((a / b) | 0);
+      case 'divu': return b === 0 ? -1 : (((a >>> 0) / (b >>> 0)) | 0);
+      case 'rem': return b === 0 ? a : (a % b) | 0;
+      case 'remu': return b === 0 ? a : ((a >>> 0) % (b >>> 0)) | 0;
+
+      // CSR Operations
+      case 'csrrw': case 'csrrs': case 'csrrc':
+      case 'csrrwi': case 'csrrsi': case 'csrrci':
+        // Return the old CSR value (shamt is used to pass the CSR value in evaluate, or we just rely on state)
+        // Wait, executeALU shouldn't read state directly. We read it here via this.csrRegisters
+        // using aluInput2 (imm) as the CSR address.
+        return this.csrRegisters.get(b) ?? 0;
+
       case 'lw': case 'lh': case 'lhu': case 'lb': case 'lbu':
       case 'sw': case 'sh': case 'sb':
         return (a + b) | 0; // Address calculation
@@ -891,6 +935,11 @@ export class MIPSPipelineEngine {
       case 'blez': return rs <= 0;
       case 'bgez': return rs >= 0;
       case 'bltz': return rs < 0;
+      // RISC-V branches
+      case 'blt': return rs < rt;
+      case 'bge': return rs >= rt;
+      case 'bltu': return (rs >>> 0) < (rt >>> 0);
+      case 'bgeu': return (rs >>> 0) >= (rt >>> 0);
       default: return false;
     }
   }
@@ -902,6 +951,36 @@ export class MIPSPipelineEngine {
     const b2 = this.memory.get(aligned + 2) ?? 0;
     const b3 = this.memory.get(aligned + 3) ?? 0;
     return ((b0 << 24) | (b1 << 16) | (b2 << 8) | b3) | 0;
+  }
+
+  private readMemByOp(op: string, address: number): number {
+    const word = this.readMemWord(address);
+    const byteOffset = address & 3;
+    const shift = (3 - byteOffset) * 8; // Big-endian
+    
+    switch (op) {
+      case 'lb': {
+        const b = (word >>> shift) & 0xFF;
+        return (b << 24) >> 24; // Sign-extend
+      }
+      case 'lbu': {
+        return (word >>> shift) & 0xFF; // Zero-extend
+      }
+      case 'lh': {
+        // Assume halfword is aligned, or handle unaligned by taking 2 bytes
+        const alignOffset = address & 2;
+        const sh = alignOffset === 0 ? 16 : 0;
+        const h = (word >>> sh) & 0xFFFF;
+        return (h << 16) >> 16; // Sign-extend
+      }
+      case 'lhu': {
+        const alignOffset = address & 2;
+        const sh = alignOffset === 0 ? 16 : 0;
+        return (word >>> sh) & 0xFFFF; // Zero-extend
+      }
+      default:
+        return word; // lw
+    }
   }
 
   private writeMemWord(address: number, value: number): void {
