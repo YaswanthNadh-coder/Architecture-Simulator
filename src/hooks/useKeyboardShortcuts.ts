@@ -22,13 +22,13 @@ export const SHORTCUTS: ShortcutDef[] = [
   { key: 'z', label: 'Ctrl + Z', description: 'Step backward', modifier: 'ctrl' },
   { key: 'Escape', label: 'Esc', description: 'Stop auto-play' },
   { key: '/', label: '?', description: 'Toggle shortcuts help', modifier: 'shift' },
-  { key: '1', label: '1', description: 'Pipeline view' },
-  { key: '2', label: '2', description: 'Datapath view' },
-  { key: '3', label: '3', description: 'Timing diagram' },
-  { key: '4', label: '4', description: 'Memory view' },
-  { key: '5', label: '5', description: 'Cache view' },
-  { key: '6', label: '6', description: 'What-If / Diff view' },
-  { key: '7', label: '7', description: 'Branch view' },
+  { key: '1', label: 'Alt + 1', description: 'Pipeline view', modifier: 'alt' },
+  { key: '2', label: 'Alt + 2', description: 'Datapath view', modifier: 'alt' },
+  { key: '3', label: 'Alt + 3', description: 'Timing diagram', modifier: 'alt' },
+  { key: '4', label: 'Alt + 4', description: 'Memory view', modifier: 'alt' },
+  { key: '5', label: 'Alt + 5', description: 'Cache view', modifier: 'alt' },
+  { key: '6', label: 'Alt + 6', description: 'What-If / Diff view', modifier: 'alt' },
+  { key: '7', label: 'Alt + 7', description: 'Branch view', modifier: 'alt' },
 ];
 
 function isEditorFocused(): boolean {
@@ -73,6 +73,7 @@ export function useKeyboardShortcuts(
     const key = e.key;
     const ctrl = e.ctrlKey || e.metaKey;
     const shift = e.shiftKey;
+    const alt = e.altKey;
 
     // Space — step or toggle play
     if (key === ' ' || key === 'Space') {
@@ -126,7 +127,7 @@ export function useKeyboardShortcuts(
     }
 
     // Number keys — switch tabs
-    if (!ctrl && !shift && TAB_MAP[key] && setActiveTab) {
+    if (!ctrl && !shift && alt && TAB_MAP[key] && setActiveTab) {
       e.preventDefault();
       setActiveTab(TAB_MAP[key]);
       return;
