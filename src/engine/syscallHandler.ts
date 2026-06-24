@@ -67,6 +67,7 @@ export function handleSyscall(
   v0: number,
   registers: Int32Array,
   memory: Map<number, number>,
+  isa: 'mips' | 'riscv' = 'mips'
 ): SyscallResult {
   const result: SyscallResult = {
     exit: false,
@@ -77,14 +78,16 @@ export function handleSyscall(
 
   switch (v0) {
     case SYSCALL.PRINT_INT: {
-      // Print integer in $a0
-      result.outputText = String(registers[4]); // $a0
+      const a0 = isa === 'riscv' ? registers[10] : registers[4];
+      // Print integer in $a0/a0
+      result.outputText = String(a0);
       break;
     }
 
     case SYSCALL.PRINT_STRING: {
-      // Print null-terminated string starting at address in $a0
-      const addr = registers[4]; // $a0
+      const a0 = isa === 'riscv' ? registers[10] : registers[4];
+      // Print null-terminated string starting at address in $a0/a0
+      const addr = a0;
       const bytes: number[] = [];
       let pos = addr;
       const maxLen = 4096; // Safety limit
@@ -120,8 +123,9 @@ export function handleSyscall(
     }
 
     case SYSCALL.PRINT_CHAR: {
-      // Print char in $a0
-      const charCode = registers[4] & 0xFF; // $a0
+      const a0 = isa === 'riscv' ? registers[10] : registers[4];
+      // Print char in $a0/a0
+      const charCode = a0 & 0xFF;
       result.outputText = String.fromCharCode(charCode);
       break;
     }
@@ -133,16 +137,18 @@ export function handleSyscall(
     }
 
     case SYSCALL.PRINT_HEX: {
-      // Print $a0 as hex
-      const val = registers[4] >>> 0; // $a0 as unsigned
+      const a0 = isa === 'riscv' ? registers[10] : registers[4];
+      // Print $a0/a0 as hex
+      const val = a0 >>> 0; // unsigned
       result.outputText = '0x' + val.toString(16).toUpperCase().padStart(8, '0');
       break;
     }
 
     case SYSCALL.SBRK: {
-      // Allocate $a0 bytes on heap — simplified: just return current heap pointer
+      // Allocate $a0/a0 bytes on heap — simplified: just return current heap pointer
       // For now, return a fixed heap address. Full heap management is future work.
-      result.registerWrites.set(2, 0x10040000); // $v0 = heap address
+      const retReg = isa === 'riscv' ? 10 : 2;
+      result.registerWrites.set(retReg, 0x10040000); // return address
       break;
     }
 
@@ -163,28 +169,33 @@ export function completeSyscallInput(
   inputValue: number | string,
   registers: Int32Array,
   memory: Map<number, number>,
+  isa: 'mips' | 'riscv' = 'mips'
 ): Map<number, number> {
   const writes = new Map<number, number>();
 
   switch (v0) {
     case SYSCALL.READ_INT: {
-      // Write integer to $v0
+      // Write integer to $v0/a0
       const val = typeof inputValue === 'number' ? inputValue : parseInt(String(inputValue), 10) || 0;
-      writes.set(2, val); // $v0 = register 2
+      const retReg = isa === 'riscv' ? 10 : 2;
+      writes.set(retReg, val);
       break;
     }
 
     case SYSCALL.READ_CHAR: {
-      // Write char to $v0
+      // Write char to $v0/a0
       const ch = typeof inputValue === 'string' ? inputValue.charCodeAt(0) : inputValue;
-      writes.set(2, ch & 0xFF); // $v0 = register 2
+      const retReg = isa === 'riscv' ? 10 : 2;
+      writes.set(retReg, ch & 0xFF);
       break;
     }
 
     case SYSCALL.READ_STRING: {
-      // Write string to buffer at $a0, max length $a1
-      const addr = registers[4]; // $a0
-      const maxLen = registers[5]; // $a1
+      // Write string to buffer at $a0/a0, max length $a1/a1
+      const a0 = isa === 'riscv' ? registers[10] : registers[4];
+      const a1 = isa === 'riscv' ? registers[11] : registers[5];
+      const addr = a0;
+      const maxLen = a1;
       const str = String(inputValue);
       const encoder = new TextEncoder();
       const bytes = encoder.encode(str);

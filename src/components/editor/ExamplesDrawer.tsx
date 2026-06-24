@@ -1,18 +1,22 @@
 import { useState, useMemo } from 'react';
 import { useSimulatorStore } from '../../store/simulatorStore';
 import { EXAMPLE_PROGRAMS, CATEGORIES, type ExampleProgram } from '../../engine/examplePrograms';
+import { RISCV_EXAMPLE_PROGRAMS, RISCV_CATEGORIES } from '../../engine/riscvExamplePrograms';
 import { BookOpen, X, Search, Tag, BarChart } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export const ExamplesDrawer = () => {
-  const { setCode } = useSimulatorStore();
+  const { setCode, isa } = useSimulatorStore();
   const [isOpen, setIsOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('basics');
   const [searchQuery, setSearchQuery] = useState('');
   const [preview, setPreview] = useState<ExampleProgram | null>(null);
 
+  const programsList = isa === 'riscv' ? RISCV_EXAMPLE_PROGRAMS : EXAMPLE_PROGRAMS;
+  const categoriesList = isa === 'riscv' ? RISCV_CATEGORIES : CATEGORIES;
+
   const filteredPrograms = useMemo(() => {
-    return EXAMPLE_PROGRAMS.filter(p => {
+    return programsList.filter(p => {
       const matchesCategory = p.category === selectedCategory;
       const matchesSearch = searchQuery === '' || 
         p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -103,7 +107,7 @@ export const ExamplesDrawer = () => {
               {/* Categories */}
               {!preview && (
                 <div className="flex gap-1 px-6 py-3 border-b border-border-subtle overflow-x-auto shrink-0">
-                  {CATEGORIES.map(cat => (
+                  {categoriesList.map(cat => (
                     <button
                       key={cat.id}
                       onClick={() => setSelectedCategory(cat.id)}

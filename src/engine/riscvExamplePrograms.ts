@@ -180,6 +180,118 @@ base_case:
   ret
 `,
   },
+  {
+    id: 'rv-array-sum',
+    name: 'Array Sum (RISC-V)',
+    category: 'basics',
+    description: 'Traverse an array in memory and compute the sum of its elements.',
+    difficulty: 'Beginner',
+    tags: ['arrays', 'memory', 'loops'],
+    code: `# Array Sum — RISC-V RV32I
+# Demonstrates array traversal and memory loads
+
+.data
+array:  .word 5, 10, 15, 20, 25
+size:   .word 5
+msg:    .string "Sum is: "
+
+.text
+main:
+  la    t0, array      # t0 = address of array
+  la    t1, size
+  lw    t1, 0(t1)      # t1 = size (5)
+  li    t2, 0          # sum = 0
+
+sum_loop:
+  beq   t1, zero, done # if size == 0, exit loop
+  lw    t3, 0(t0)      # load array[i]
+  add   t2, t2, t3     # sum += array[i]
+  addi  t0, t0, 4      # move to next element
+  addi  t1, t1, -1     # size--
+  j     sum_loop
+
+done:
+  # Print message
+  li    a7, 4
+  la    a0, msg
+  ecall
+
+  # Print sum
+  li    a7, 1
+  mv    a0, t2
+  ecall
+
+  li    a7, 10
+  ecall
+`,
+  },
+  {
+    id: 'rv-string-reverse',
+    name: 'String Reversal (RISC-V)',
+    category: 'algorithms',
+    description: 'Find the length of a string and reverse it in place using two pointers.',
+    difficulty: 'Intermediate',
+    tags: ['strings', 'pointers', 'functions'],
+    code: `# String Reversal — RISC-V RV32I
+# Find string length and reverse it in place
+
+.data
+str:    .string "Architecture"
+nl:     .string "\\n"
+
+.text
+main:
+  la    a0, str
+  call  strlen
+  mv    t0, a0         # length
+  
+  # Print original string
+  li    a7, 4
+  la    a0, str
+  ecall
+  
+  la    a0, nl
+  ecall
+
+  # Reverse string
+  la    t1, str        # start pointer
+  la    t2, str
+  add   t2, t2, t0
+  addi  t2, t2, -1     # end pointer (last char before \\0)
+
+reverse_loop:
+  bge   t1, t2, print_rev
+  lb    t3, 0(t1)
+  lb    t4, 0(t2)
+  sb    t4, 0(t1)
+  sb    t3, 0(t2)
+  addi  t1, t1, 1
+  addi  t2, t2, -1
+  j     reverse_loop
+
+print_rev:
+  li    a7, 4
+  la    a0, str
+  ecall
+
+  li    a7, 10
+  ecall
+
+strlen:
+  # a0 = string address, returns length in a0
+  li    t0, 0          # length = 0
+  mv    t1, a0         # temp pointer
+len_loop:
+  lb    t2, 0(t1)
+  beq   t2, zero, len_done
+  addi  t0, t0, 1
+  addi  t1, t1, 1
+  j     len_loop
+len_done:
+  mv    a0, t0
+  ret
+`,
+  },
 ];
 
 export const RISCV_CATEGORIES = [

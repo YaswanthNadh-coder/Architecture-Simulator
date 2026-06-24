@@ -344,7 +344,7 @@ export class MIPSPipelineEngine {
     if (this.memWb.valid && this.memWb.isSyscall) {
       // Use MIPS v0 (reg 2) or RISC-V a7 (reg 17)
       const v0 = this.isa === 'riscv' ? this.registers[17] : this.registers[2];
-      syscallResult = handleSyscall(v0, this.registers, this.memory);
+      syscallResult = handleSyscall(v0, this.registers, this.memory, this.isa);
       consoleOutput = syscallResult.outputText;
 
       // Apply register writes from syscall
@@ -420,7 +420,7 @@ export class MIPSPipelineEngine {
         consoleOutput = 'Breakpoint encountered (ebreak).\n';
       } else {
         const v0 = this.isa === 'riscv' ? this.registers[17] : this.registers[2];
-        syscallResult = handleSyscall(v0, this.registers, this.memory);
+        syscallResult = handleSyscall(v0, this.registers, this.memory, this.isa);
         consoleOutput = syscallResult.outputText;
 
         // Apply register writes from syscall
