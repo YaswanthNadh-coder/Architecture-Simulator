@@ -9,7 +9,6 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAssignmentStore } from '../../store/assignmentStore';
-import { useAuthStore } from '../../store/authStore';
 import { AssignmentBuilder } from './AssignmentBuilder';
 import { useEffect } from 'react';
 
@@ -43,17 +42,11 @@ export const GradingPage = () => {
   const [activeSection, setActiveSection] = useState<'single' | 'batch' | 'plagiarism' | 'builder'>('single');
   const [editingAssignmentId, setEditingAssignmentId] = useState<string | null>(null);
 
-  const { profile } = useAuthStore();
   const { 
     customAssignments, addAssignment, updateAssignment, deleteAssignment, duplicateAssignment, 
     syncing, lastSyncError, loadFromSupabase 
   } = useAssignmentStore();
   
-  useEffect(() => {
-    if (profile) {
-      loadFromSupabase();
-    }
-  }, [profile, loadFromSupabase]);
 
   const allAssignments = [...ASSIGNMENTS, ...customAssignments];
   const assignment = allAssignments.find(a => a.id === selectedAssignment) || allAssignments[0];
@@ -150,7 +143,7 @@ export const GradingPage = () => {
             className="flex items-center gap-2 text-text-muted hover:text-white transition-colors text-sm"
           >
             <ArrowLeft size={16} />
-            Dashboard
+            Back
           </button>
           <div className="w-px h-6 bg-border-subtle" />
           <h1 className="text-white font-bold text-lg">Professor Tools</h1>
@@ -181,17 +174,7 @@ export const GradingPage = () => {
             )}
           </select>
 
-          {profile && (
-            <div className="flex items-center gap-2 text-xs text-text-muted">
-              {syncing ? (
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-brand-500 animate-pulse" /> Syncing...</span>
-              ) : lastSyncError ? (
-                <span className="flex items-center gap-1 text-red-400"><AlertTriangle size={12} /> Sync Error</span>
-              ) : (
-                <span className="flex items-center gap-1 text-emerald-400"><CheckCircle2 size={12} /> Synced</span>
-              )}
-            </div>
-          )}
+
         </div>
       </header>
 

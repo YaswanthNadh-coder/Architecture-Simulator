@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Check, ArrowRight, GraduationCap, ChevronDown } from 'lucide-react';
+import { Check, ArrowRight, GraduationCap, ChevronDown, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
@@ -86,6 +86,27 @@ export const PricingPage = () => {
           onChange={setIsAnnual}
           savingsText={isAnnual ? `Save ${savings.savingsPercent}%` : undefined}
         />
+
+        {/* ── Institutional Coming Soon Banner ────────────── */}
+        <div className="bg-brand-500/5 border border-brand-500/20 rounded-2xl p-6 mb-8 text-center max-w-3xl mx-auto">
+          <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-500/10 rounded-full text-brand-400 text-xs font-medium mb-3">
+            <Sparkles size={12} /> Institutional plan coming soon
+          </div>
+          <h2 className="text-xl font-bold text-white mb-2">
+            Teaching a computer architecture course?
+          </h2>
+          <p className="text-text-muted text-sm max-w-md mx-auto mb-4">
+            Course management, auto-grading with hidden test cases, roster analytics, 
+            and LMS integration (Canvas / Moodle) are on the roadmap. 
+            Get notified when they launch.
+          </p>
+          <a
+            href="mailto:archsim@example.com?subject=Architecture Simulator — Institutional Access"
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-brand-500 text-white text-sm font-semibold rounded-xl hover:bg-brand-400 transition-colors"
+          >
+            Request early access
+          </a>
+        </div>
 
         {/* ── Tier Cards ─────────────────────────────────────── */}
         <div className="grid md:grid-cols-2 gap-8 max-w-3xl mx-auto items-start">

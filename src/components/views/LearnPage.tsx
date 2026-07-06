@@ -1,6 +1,9 @@
-import { BookOpen, CheckCircle2, Play, Trophy, Clock } from 'lucide-react';
+import { BookOpen, CheckCircle2, Play, Trophy, Clock, FlaskConical, ArrowRight } from 'lucide-react';
 import { TUTORIAL_LESSONS, type TutorialLesson } from '../../engine/tutorialLessons';
 import { useTutorialStore } from '../../store/tutorialStore';
+import { CURRICULUM_LABS, CURRICULUM_MODULES, getLabsByModule, type CurriculumLab } from '../../engine/curriculumLabs';
+import { useNavigate } from 'react-router-dom';
+import { useSimulatorStore } from '../../store/simulatorStore';
 
 export const LearnPage = () => {
   const { startLesson, getLessonProgress, getOverallProgress } = useTutorialStore();
@@ -50,6 +53,27 @@ export const LearnPage = () => {
           <ModuleSection title="Module 1: Pipeline Fundamentals" lessons={beginner} color="emerald" startLesson={startLesson} getLessonProgress={getLessonProgress} />
           <ModuleSection title="Module 2: Hazards & Solutions" lessons={intermediate} color="brand" startLesson={startLesson} getLessonProgress={getLessonProgress} />
           <ModuleSection title="Module 3: Advanced Optimization" lessons={advanced} color="purple" startLesson={startLesson} getLessonProgress={getLessonProgress} />
+        </div>
+
+        {/* ─── Curriculum Labs ─── */}
+        <div className="border-t border-border-subtle pt-12">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-8">
+            <div>
+              <h2 className="text-2xl font-bold text-white mb-2 flex items-center gap-3">
+                <FlaskConical size={24} className="text-cyan-400" />
+                Curriculum Labs
+              </h2>
+              <p className="text-text-muted text-sm max-w-2xl leading-relaxed">
+                15 structured labs covering the full Patterson & Hennessy syllabus. Each lab includes starter code, instructions, hints, and test cases.
+              </p>
+            </div>
+            <div className="bg-bg-surface border border-border-subtle rounded-xl px-4 py-2">
+              <span className="text-xs font-bold text-cyan-400">{CURRICULUM_LABS.length} labs</span>
+              <span className="text-xs text-text-muted"> · 5 modules</span>
+            </div>
+          </div>
+
+          <CurriculumLabsSection />
         </div>
       </div>
     </div>

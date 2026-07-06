@@ -15,7 +15,7 @@ import { ShareDialog } from './ShareDialog';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { UpgradeBanner } from '../monetization/UpgradeBanner';
-import { projectService } from '../../services/projectService';
+import { localProjectService } from '../../services/localProjectService';
 import { assignmentService } from '../../services/courseService';
 import { submissionService } from '../../services/submissionService';
 
@@ -207,7 +207,7 @@ export const SimulatorPage = () => {
 
     // 2. Load regular project from Supabase
     if (projectId) {
-      projectService.get(projectId).then(({ data: proj }) => {
+      localProjectService.getById(projectId).then(({ data: proj }) => {
         if (proj) {
           setProjectName(proj.name);
           setCode(proj.code);
@@ -231,8 +231,8 @@ export const SimulatorPage = () => {
     if (activeProjectId === projectId && projectId) {
       // Use a debounce timer to avoid saving on every keystroke
       const timer = setTimeout(() => {
-        projectService.update(projectId, { code }).catch((e) => {
-          console.error('Failed to save project to Supabase:', e);
+        localProjectService.update(projectId, { code }).catch((e) => {
+          console.error('Failed to save project:', e);
         });
       }, 1000);
       return () => clearTimeout(timer);
@@ -264,16 +264,7 @@ export const SimulatorPage = () => {
               input required
             </span>
           )}
-          {tier === 'free' && (
-            <span className="ml-3 text-[9px] px-2 py-0.5 rounded-full bg-white/5 text-text-muted border border-border-subtle font-medium uppercase tracking-wider flex items-center gap-1">
-              Free Plan
-            </span>
-          )}
-          {(tier === 'pro' || tier === 'institution' || tier === 'enterprise') && (
-            <span className="ml-3 text-[9px] px-2 py-0.5 rounded-full bg-brand-500/10 text-brand-400 border border-brand-500/20 font-bold uppercase tracking-wider flex items-center gap-1">
-              <Sparkles size={8} /> {tier.charAt(0).toUpperCase() + tier.slice(1)}
-            </span>
-          )}
+
         </div>
 
         {/* Navigation actions */}

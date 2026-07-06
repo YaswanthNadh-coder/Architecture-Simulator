@@ -125,17 +125,9 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
   },
 
   // ── Feature access checks ─────────────────────────────────────────────
-  canAccess: (feature) => {
-    const { capabilities, status } = get();
-    // Past-due users in grace period still have access
-    if (status === 'expired') {
-      return getTierCapabilities('free')[feature] !== false;
-    }
-    const val = capabilities[feature];
-    if (typeof val === 'boolean') return val;
-    if (typeof val === 'number') return val !== 0;
-    if (Array.isArray(val)) return val.length > 0;
-    return !!val;
+  // MVP OVERRIDE — canAccess always returns true
+  canAccess: (_feature) => {
+    return true;
   },
 
   isFeatureEnabled: (feature) => {
@@ -146,9 +138,9 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
     return get().capabilities[feature];
   },
 
-  isWithinProgramLimit: (currentCount) => {
-    const max = get().capabilities.maxPrograms;
-    return max === -1 || currentCount < max;
+  // MVP OVERRIDE — no program cap
+  isWithinProgramLimit: (_currentCount) => {
+    return true;
   },
 
   isWithinLineLimit: (lineCount) => {

@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { FeatureGate } from '../monetization/FeatureGate';
 import { AnalyticsDashboard } from '../analytics/AnalyticsDashboard';
 import { ConceptMastery } from '../analytics/ConceptMastery';
+import { InstructorOnboarding } from './InstructorOnboarding';
 
 export const DashboardPage = () => {
   const { profile } = useAuthStore();
@@ -39,6 +40,9 @@ export const DashboardPage = () => {
             </div>
           </div>
         </div>
+
+        {/* Instructor Onboarding Checklist */}
+        <InstructorOnboarding />
 
         {/* Quick Start Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">

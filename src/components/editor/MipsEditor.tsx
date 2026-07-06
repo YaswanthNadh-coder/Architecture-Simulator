@@ -3,6 +3,7 @@ import { useSimulatorStore } from '../../store/simulatorStore';
 import { useSettingsStore } from '../../store/settingsStore';
 import { assemble as mipsAssemble } from '../../engine/mipsParser';
 import { assembleRISCV as riscvAssemble } from '../../engine/riscvParser';
+import { explainError } from '../../engine/errorExplainer';
 import { Play, Pause, SkipForward, SkipBack, RotateCcw, Zap } from 'lucide-react';
 import { useEffect, useRef, useCallback } from 'react';
 import type * as Monaco from 'monaco-editor';
@@ -444,18 +445,27 @@ export const MipsEditor = () => {
 
         {/* Error display */}
         {parseErrors.filter(e => e.severity === 'error').length > 0 && (
-          <div className="mt-2 p-2 rounded-lg bg-red-500/10 border border-red-500/20">
-            <div className="text-xs text-red-400 font-medium mb-1">Assembly Errors</div>
-            {parseErrors.filter(e => e.severity === 'error').slice(0, 3).map((err, i) => (
-              <div key={i} className="text-[11px] text-red-300/80 font-mono">
-                Line {err.line}: {err.message}
-              </div>
-            ))}
-            {parseErrors.filter(e => e.severity === 'error').length > 3 && (
-              <div className="text-[10px] text-red-400/60 mt-1">
-                +{parseErrors.filter(e => e.severity === 'error').length - 3} more errors
-              </div>
-            )}
+          <div className="mt-2 p-2.5 rounded-lg bg-red-500/10 border border-red-500/20 max-h-40 overflow-y-auto custom-scrollbar">
+            <div className="text-xs text-red-400 font-bold mb-2 flex items-center gap-1.5">
+              <Zap size={12} /> Assembly Errors
+            </div>
+            {parseErrors.filter(e => e.severity === 'error').map((err, i) => {
+              const codeLine = code.split('\n')[err.line - 1] || '';
+              const explanation = explainError(err.message, codeLine);
+              
+              return (
+                <div key={i} className="mb-3 last:mb-0 bg-black/20 rounded p-2 border border-red-500/10">
+                  <div className="text-[11px] text-red-300 font-mono font-bold mb-1">
+                    Line {err.line}: {err.message}
+                  </div>
+                  {explanation !== err.message && (
+                    <div className="text-[10px] text-red-200/80 leading-relaxed pl-2 border-l-2 border-red-500/30 whitespace-pre-wrap">
+                      {explanation}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 

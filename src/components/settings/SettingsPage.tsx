@@ -1,27 +1,12 @@
-// No hooks needed in SettingsPage
-import { Settings, User, Monitor, CreditCard, AlertTriangle, Download, Sparkles, LogOut } from 'lucide-react';
+import { Settings, User, Monitor, Download, AlertTriangle, LogOut } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
-import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { useSettingsStore } from '../../store/settingsStore';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 
 export const SettingsPage = () => {
   const { profile } = useAuthStore();
-  const {
-    tier, status, cancelAtPeriodEnd,
-    isStudentDiscount, getTrialDaysRemaining, isTrialActive,
-  } = useSubscriptionStore();
   const { fontSize, setFontSize } = useSettingsStore();
   const navigate = useNavigate();
-
-  const isPaid = tier === 'pro' || tier === 'institution';
-  const trialDays = getTrialDaysRemaining();
-
-  /** Simple tier display name */
-  const tierDisplayName = (t: string) => {
-    const names: Record<string, string> = { free: 'Free', pro: 'Pro', institution: 'Institution' };
-    return names[t] || t;
-  };
 
   const handleExport = () => {
     const data = {
@@ -51,101 +36,49 @@ export const SettingsPage = () => {
         </h1>
 
         <div className="space-y-8">
-          {/* Profile Section */}
+          {/* Profile Section — conditional on sign-in state */}
           <section className="bg-bg-surface border border-border-subtle rounded-2xl p-6">
             <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
               <User size={18} className="text-brand-500" /> Profile
             </h2>
-            <div className="flex items-center gap-6 mb-6">
-              <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-brand-500 to-cyan-400 flex items-center justify-center text-white font-bold text-3xl shadow-lg">
-                {profile?.full_name?.charAt(0) || 'A'}
-              </div>
-              <div className="flex-1">
-                <h3 className="text-xl font-bold text-white">{profile?.full_name || 'Anonymous User'}</h3>
-                <p className="text-text-muted capitalize">{profile?.role || 'Student'}</p>
-              </div>
-              <button
-                onClick={async () => {
-                  await useAuthStore.getState().logout();
-                  navigate('/login');
-                }}
-                className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white text-sm font-semibold rounded-xl transition-colors border border-white/10 flex items-center gap-2"
-              >
-                <LogOut size={16} /> Log Out
-              </button>
-            </div>
-          </section>
-
-          {/* Subscription Section */}
-          <section className="bg-bg-surface border border-border-subtle rounded-2xl p-6">
-            <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-              <CreditCard size={18} className="text-cyan-500" /> Subscription
-            </h2>
-
-            {/* Current plan card */}
-            <div className="p-5 bg-bg-panel rounded-xl border border-border-subtle mb-4">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <p className="text-xs text-text-muted uppercase tracking-wider mb-1">Current Plan</p>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl font-bold text-white">{tierDisplayName(tier)}</span>
-                    {isPaid && status === 'active' && (
-                      <span className="bg-emerald-500/10 text-emerald-400 text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border border-emerald-500/20">
-                        ACTIVE
-                      </span>
-                    )}
-                    {status === 'trialing' && (
-                      <span className="bg-brand-500/10 text-brand-400 text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border border-brand-500/20">
-                        TRIAL
-                      </span>
-                    )}
-                    {cancelAtPeriodEnd && (
-                      <span className="bg-yellow-500/10 text-yellow-400 text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border border-yellow-500/20">
-                        CANCELING
-                      </span>
-                    )}
-                    {isStudentDiscount && (
-                      <span className="bg-emerald-500/10 text-emerald-400 text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full border border-emerald-500/20">
-                        STUDENT
-                      </span>
-                    )}
-                  </div>
+            {profile ? (
+              <div className="flex items-center gap-6 mb-6">
+                <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-brand-500 to-cyan-400 flex items-center justify-center text-white font-bold text-3xl shadow-lg">
+                  {profile?.full_name?.charAt(0) || 'A'}
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-xl font-bold text-white">{profile?.full_name || 'Anonymous User'}</h3>
+                  <p className="text-text-muted capitalize">{profile?.role || 'Student'}</p>
                 </div>
                 <button
-                  onClick={() => navigate('/pricing')}
-                  className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white text-sm font-semibold rounded-xl transition-colors border border-white/10"
+                  onClick={async () => {
+                    await useAuthStore.getState().logout();
+                    navigate('/');
+                  }}
+                  className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white text-sm font-semibold rounded-xl transition-colors border border-white/10 flex items-center gap-2"
                 >
-                  {tier === 'free' ? 'Upgrade' : 'Change Plan'}
+                  <LogOut size={16} /> Log Out
                 </button>
               </div>
-
-              {/* Trial info */}
-              {isTrialActive() && (
-                <div className="mt-4 pt-4 border-t border-border-subtle/50">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Sparkles size={14} className="text-brand-400" />
-                      <p className="text-sm text-white">
-                        <span className="font-bold">{trialDays}</span> days left in your Pro trial
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => navigate('/pricing')}
-                      className="text-xs text-brand-400 font-semibold hover:text-brand-300 transition-colors"
-                    >
-                      Upgrade Now →
-                    </button>
-                  </div>
-                  <div className="mt-2 w-full h-1.5 bg-bg-base rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-brand-500 to-cyan-400 rounded-full transition-all"
-                      style={{ width: `${Math.max(5, ((14 - trialDays) / 14) * 100)}%` }}
-                    />
-                  </div>
+            ) : (
+              <div className="flex items-center gap-4">
+                <div className="w-20 h-20 rounded-2xl bg-bg-panel border border-border-subtle flex items-center justify-center">
+                  <User size={32} className="text-text-muted" />
                 </div>
-              )}
-            </div>
+                <div>
+                  <p className="text-white font-semibold">Not signed in</p>
+                  <Link to="/login" className="text-brand-400 text-sm hover:underline">Sign in to save progress across devices →</Link>
+                </div>
+              </div>
+            )}
           </section>
+
+          {/* Subscription Section — hidden in MVP */}
+          {false && (
+            <section className="bg-bg-surface border border-border-subtle rounded-2xl p-6">
+              {/* entire subscription section — hidden in MVP */}
+            </section>
+          )}
 
           {/* Data & Privacy */}
           <section className="bg-bg-surface border border-border-subtle rounded-2xl p-6">
