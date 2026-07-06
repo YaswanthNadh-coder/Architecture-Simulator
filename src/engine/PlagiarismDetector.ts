@@ -19,7 +19,7 @@ export class PlagiarismDetector {
     
     try {
       assembledA = assemble(sourceA);
-    } catch (e) {
+    } catch {
       return {
         similarityScore: 0,
         matchedSequences: [],
@@ -30,7 +30,7 @@ export class PlagiarismDetector {
     
     try {
       assembledB = assemble(sourceB);
-    } catch (e) {
+    } catch {
       return {
         similarityScore: 0,
         matchedSequences: [],

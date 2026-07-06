@@ -16,6 +16,7 @@ export type Profile = {
   role: 'student' | 'instructor';
   avatar_url: string | null;
   created_at: string;
+  onboarding_completed_at?: string | null;
 
   // ── Subscription fields ──
   tier: TierName;

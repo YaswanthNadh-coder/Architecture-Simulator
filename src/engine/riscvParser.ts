@@ -61,7 +61,7 @@ export const RV_REG_NAMES = [
 // ── Instruction Format Definitions ───────────────────────────────────────
 
 type RVFormat = 'R' | 'I' | 'S' | 'B' | 'U' | 'J' | 'LOAD' | 'STORE' | 'BRANCH' | 'ECALL' | 'NOP'
-  | 'I_SHIFT';
+  | 'I_SHIFT' | 'CSR' | 'CSR_I';
 
 interface RVInstructionDef {
   format: RVFormat;
@@ -142,7 +142,7 @@ const RV_INSTRUCTIONS: Record<string, RVInstructionDef> = {
 
   // System and CSR
   'ecall':   { format: 'ECALL', isSyscall: true },
-  'ebreak':  { format: 'ECALL' }, // Usually handled similarly in pipeline (WB/EX)
+  'ebreak':  { format: 'ECALL', isSyscall: true }, // Usually handled similarly in pipeline (WB/EX)
   'nop':     { format: 'NOP' },
   'csrrw':   { format: 'CSR', writesRd: true },
   'csrrs':   { format: 'CSR', writesRd: true },

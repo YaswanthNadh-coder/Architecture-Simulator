@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { supabase } from '../../lib/supabase';
 import { BookOpen, Users, Share2, ClipboardCheck, CheckCircle2, X, ChevronRight } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 
 interface OnboardingStep {
   id: string;
@@ -20,9 +20,6 @@ export const InstructorOnboarding = () => {
   const navigate = useNavigate();
   const [dismissed, setDismissed] = useState(false);
   const [completedSteps, setCompletedSteps] = useState<Set<string>>(new Set());
-  const [hasCourse, setHasCourse] = useState(false);
-  const [hasAssignment, setHasAssignment] = useState(false);
-  const [hasSubmission, setHasSubmission] = useState(false);
 
   // Don't render for non-instructors or if already completed
   const shouldShow = profile?.role === 'instructor'
@@ -41,7 +38,9 @@ export const InstructorOnboarding = () => {
         .limit(1);
       
       const courseExists = (courses?.length ?? 0) > 0;
-      setHasCourse(courseExists);
+
+      let assignExists = false;
+      let submissionExists = false;
 
       if (courseExists && courses?.[0]) {
         // Check if any assignments exist
@@ -51,8 +50,7 @@ export const InstructorOnboarding = () => {
           .eq('instructor_id', profile.id)
           .limit(1);
         
-        const assignExists = (assignments?.length ?? 0) > 0;
-        setHasAssignment(assignExists);
+        assignExists = (assignments?.length ?? 0) > 0;
 
         if (assignExists) {
           // Check if any submissions exist for their courses
@@ -61,7 +59,7 @@ export const InstructorOnboarding = () => {
             .select('id')
             .eq('course_id', courses[0].id)
             .limit(1);
-          setHasSubmission((subs?.length ?? 0) > 0);
+          submissionExists = (subs?.length ?? 0) > 0;
         }
       }
 
@@ -70,7 +68,7 @@ export const InstructorOnboarding = () => {
       if (assignExists) done.add('add-assignment');
       // "share-code" is considered done once they have a course (code auto-generated)
       if (courseExists) done.add('share-code');
-      if (hasSubmission) done.add('review-submission');
+      if (submissionExists) done.add('review-submission');
       setCompletedSteps(done);
     };
 

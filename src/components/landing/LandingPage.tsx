@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Play, ArrowRight, CheckCircle2, XCircle, Cpu, GitBranch,
-  Shield, BarChart3, GraduationCap, Zap, Eye, BookOpen,
-  ChevronDown, Code2, Mail, ExternalLink, Layers, Terminal
+  Shield, BarChart3, GraduationCap, Zap, Eye,
+  ChevronDown, Code2, Mail, Layers, Terminal
 } from 'lucide-react';
 import { motion, useInView, useScroll, useTransform } from 'framer-motion';
 
@@ -39,7 +39,7 @@ const STAGE_COLORS: Record<string, string> = {
 function MiniSimulator() {
   const [cycle, setCycle] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
-  const intervalRef = useRef<ReturnType<typeof setInterval>>();
+  const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const maxCycles = 12;
 
   const instructions = DEMO_PROGRAM.split('\n')
@@ -125,7 +125,7 @@ function MiniSimulator() {
 
           {/* Pipeline grid */}
           <div className="space-y-1">
-            {instructions.slice(0, 8).map((inst, instrIdx) => {
+            {instructions.slice(0, 8).map((_, instrIdx) => {
               const stageInCycle = cycle - instrIdx;
               return (
                 <div key={instrIdx} className="flex gap-1">

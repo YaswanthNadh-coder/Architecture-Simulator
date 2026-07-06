@@ -56,7 +56,7 @@ export class AutoGrader {
 
     // 2. Run Test Cases
     for (const tc of assignment.testCases) {
-      const tcResult = this.runTestCase(assemblyResult, tc, useForwarding, assignment.isa);
+      const tcResult = this.runTestCase(assemblyResult, tc, useForwarding, assignment.isa ?? 'mips');
       report.testResults.push(tcResult);
       totalCorrectnessScore += tcResult.score;
       
@@ -70,7 +70,7 @@ export class AutoGrader {
     // 3. Compute Metrics (Run once more without input constraints for raw metrics)
     const engine = new MIPSPipelineEngine();
     engine.forwardingEnabled = useForwarding;
-    engine.isa = assignment.isa;
+    engine.isa = assignment.isa ?? 'mips';
     engine.loadProgram(assemblyResult.instructions);
     engine.loadDataSegment(assemblyResult.dataSegment);
     let metricsCycles = 0;

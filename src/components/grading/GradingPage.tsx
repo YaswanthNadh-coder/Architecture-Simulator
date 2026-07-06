@@ -10,7 +10,6 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAssignmentStore } from '../../store/assignmentStore';
 import { AssignmentBuilder } from './AssignmentBuilder';
-import { useEffect } from 'react';
 
 interface BatchEntry {
   filename: string;
@@ -43,8 +42,7 @@ export const GradingPage = () => {
   const [editingAssignmentId, setEditingAssignmentId] = useState<string | null>(null);
 
   const { 
-    customAssignments, addAssignment, updateAssignment, deleteAssignment, duplicateAssignment, 
-    syncing, lastSyncError, loadFromSupabase 
+    customAssignments, addAssignment, updateAssignment, deleteAssignment, duplicateAssignment
   } = useAssignmentStore();
   
 

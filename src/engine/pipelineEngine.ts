@@ -340,24 +340,30 @@ export class MIPSPipelineEngine {
       this.lo = this.memWb.loResult;
     }
 
-    // Handle syscall in WB stage
+    // Handle syscall and ebreak in WB stage
     if (this.memWb.valid && this.memWb.isSyscall) {
-      // Use MIPS v0 (reg 2) or RISC-V a7 (reg 17)
-      const v0 = this.isa === 'riscv' ? this.registers[17] : this.registers[2];
-      syscallResult = handleSyscall(v0, this.registers, this.memory, this.isa);
-      consoleOutput = syscallResult.outputText;
-
-      // Apply register writes from syscall
-      for (const [reg, val] of syscallResult.registerWrites) {
-        this.registers[reg] = val;
-      }
-
-      if (syscallResult.exit) {
+      if (this.memWb.op === 'ebreak') {
         this.finished = true;
         this.terminationReason = 'normal';
-      }
+        consoleOutput = 'Breakpoint encountered (ebreak).\n';
+      } else {
+        // Use MIPS v0 (reg 2) or RISC-V a7 (reg 17)
+        const v0 = this.isa === 'riscv' ? this.registers[17] : this.registers[2];
+        syscallResult = handleSyscall(v0, this.registers, this.memory, this.isa);
+        consoleOutput = syscallResult.outputText;
 
-      this.events.onSyscall?.(v0, syscallResult);
+        // Apply register writes from syscall
+        for (const [reg, val] of syscallResult.registerWrites) {
+          this.registers[reg] = val;
+        }
+
+        if (syscallResult.exit) {
+          this.finished = true;
+          this.terminationReason = 'normal';
+        }
+
+        this.events.onSyscall?.(v0, syscallResult);
+      }
     }
 
     // ── Memory Stall Logic ──
@@ -404,37 +410,6 @@ export class MIPSPipelineEngine {
       if (this.history.length > MAX_HISTORY) this.history.shift();
 
       return this.takeSnapshot(consoleOutput, syscallResult);
-    }
-
-    // Apply HI/LO register writes
-    if (this.memWb.valid && this.memWb.writesHiLo) {
-      this.hi = this.memWb.hiResult;
-      this.lo = this.memWb.loResult;
-    }
-
-    // Handle syscall and ebreak in WB stage
-    if (this.memWb.valid && this.memWb.isSyscall) {
-      if (this.memWb.op === 'ebreak') {
-        this.finished = true;
-        this.terminationReason = 'normal';
-        consoleOutput = 'Breakpoint encountered (ebreak).\n';
-      } else {
-        const v0 = this.isa === 'riscv' ? this.registers[17] : this.registers[2];
-        syscallResult = handleSyscall(v0, this.registers, this.memory, this.isa);
-        consoleOutput = syscallResult.outputText;
-
-        // Apply register writes from syscall
-        for (const [reg, val] of syscallResult.registerWrites) {
-          this.registers[reg] = val;
-        }
-
-        if (syscallResult.exit) {
-          this.finished = true;
-          this.terminationReason = 'normal';
-        }
-
-        this.events.onSyscall?.(v0, syscallResult);
-      }
     }
 
     // ── 4. Memory stage ────────────────────────────────────────────
@@ -876,12 +851,18 @@ export class MIPSPipelineEngine {
         return (a < b) ? 1 : 0;
       case 'sltu': case 'sltiu':
         return ((a >>> 0) < (b >>> 0)) ? 1 : 0;
-      case 'sll': case 'slli':
-        return (a << shamt) | 0;
-      case 'srl': case 'srli':
-        return (a >>> shamt) | 0;
-      case 'sra': case 'srai':
-        return (a >> shamt) | 0;
+      case 'sll':
+        return this.isa === 'riscv' ? (a << (b & 0x1F)) | 0 : (a << shamt) | 0;
+      case 'slli':
+        return (a << (shamt & 0x1F)) | 0;
+      case 'srl':
+        return this.isa === 'riscv' ? (a >>> (b & 0x1F)) | 0 : (a >>> shamt) | 0;
+      case 'srli':
+        return (a >>> (shamt & 0x1F)) | 0;
+      case 'sra':
+        return this.isa === 'riscv' ? (a >> (b & 0x1F)) | 0 : (a >> shamt) | 0;
+      case 'srai':
+        return (a >> (shamt & 0x1F)) | 0;
       case 'sllv':
         return (b << (a & 0x1F)) | 0;
       case 'srlv':

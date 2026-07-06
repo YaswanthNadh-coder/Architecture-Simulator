@@ -6,7 +6,7 @@ import { ArrowLeft, BarChart3, Users, TrendingUp, AlertTriangle } from 'lucide-r
 import { motion } from 'framer-motion';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  LineChart, Line, Cell, PieChart, Pie, Legend,
+  LineChart, Line, Cell,
 } from 'recharts';
 
 // ── Custom tooltip styling for Recharts ──────────────────────────────────────

@@ -5,7 +5,7 @@ import { PipelineCanvas } from '../pipeline/PipelineCanvas';
 import { RegisterFile } from '../inspector/RegisterFile';
 import { RightPanel } from '../inspector/RightPanel';
 import { ConsolePanel } from '../console/ConsolePanel';
-import { ChevronRight, Sparkles, FileCode2, Download, GraduationCap, Share2, ShieldAlert, CheckCircle2, RefreshCw, AlertTriangle } from 'lucide-react';
+import { ChevronRight, FileCode2, Download, GraduationCap, Share2, ShieldAlert, CheckCircle2, RefreshCw, AlertTriangle } from 'lucide-react';
 import { useSimulatorStore } from '../../store/simulatorStore';
 import { assemble } from '../../engine/mipsParser';
 import { generateLogisimImage, generateVerilogMem } from '../../engine/exportUtils';
@@ -13,7 +13,6 @@ import { detectShareParams, decodeFromURL, loadFromSupabase } from '../../engine
 import { TutorialSystem } from './TutorialSystem';
 import { ShareDialog } from './ShareDialog';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useSubscriptionStore } from '../../store/subscriptionStore';
 import { UpgradeBanner } from '../monetization/UpgradeBanner';
 import { localProjectService } from '../../services/localProjectService';
 import { assignmentService } from '../../services/courseService';
@@ -43,7 +42,6 @@ export const SimulatorPage = () => {
     code, setCode, cycle, waitingForInput, stats, isFinished,
     setForwardingEnabled, setBranchPrediction, setISA, assemble: runAssemble
   } = useSimulatorStore();
-  const { tier } = useSubscriptionStore();
   const [activeTab, setActiveTab] = useState<TabView>('Pipeline');
   const [showConsole, setShowConsole] = useState(true);
   const { showHelp, setShowHelp } = useKeyboardShortcuts((tab) => setActiveTab(tab));

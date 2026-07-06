@@ -29,6 +29,7 @@ export interface AssignmentProfile {
   blockedInstructions?: string[];  // Instructions students cannot use
   dueDate?: string;                // ISO date string
   timeLimit?: number;              // Time limit in minutes
+  isa?: 'mips' | 'riscv';          // Architecture strategy (default MIPS)
   testCases: TestCase[];
   rubric: {
     correctness: number;

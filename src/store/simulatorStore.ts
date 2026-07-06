@@ -582,7 +582,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
     const memory = engine.getMemory();
 
     // Complete the pending syscall
-    const writes = completeSyscallInput(state.pendingSyscallV0, input, registers, memory);
+    const writes = completeSyscallInput(state.pendingSyscallV0, input, registers, memory, state.isa);
 
     // Apply register writes
     for (const [reg, val] of writes) {

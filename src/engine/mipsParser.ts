@@ -728,8 +728,8 @@ function parseSingleInstruction(
         rd = requireReg(operands[0], line, errors);
         rt = requireReg(operands[1], line, errors);
         rs = requireReg(operands[2], line, errors);
-        if (rt >= 0) readsRegs.push(rt);
         if (rs >= 0) readsRegs.push(rs);
+        if (rt >= 0) readsRegs.push(rt);
         break;
       }
       case 'R1S': {
