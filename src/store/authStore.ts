@@ -11,10 +11,15 @@ interface AuthStore {
   error: string | null;
   isAuthenticated: boolean;
   isEdu: boolean;
+  // Pending verification state (for resend flow)
+  pendingVerificationEmail: string | null;
+  pendingVerificationUserId: string | null;
+  pendingVerificationName: string | null;
   // Actions
   initialize: () => Promise<void>;
   login: (email: string, password: string) => Promise<{ error: string | null }>;
-  register: (email: string, password: string, fullName: string, role: 'student' | 'instructor') => Promise<{ error: string | null }>;
+  register: (email: string, password: string, fullName: string, role: 'student' | 'instructor', captchaToken?: string) => Promise<{ error: string | null }>;
+  resendVerification: () => Promise<{ error: string | null }>;
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   fetchProfile: (id: string) => Promise<void>;
@@ -32,6 +37,9 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   error: null,
   isAuthenticated: false,
   isEdu: false,
+  pendingVerificationEmail: null,
+  pendingVerificationUserId: null,
+  pendingVerificationName: null,
 
   initialize: async () => {
     set({ loading: true });
@@ -114,21 +122,99 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     return { error: null };
   },
 
-  register: async (email, password, fullName, role) => {
+  register: async (email, password, fullName, role, captchaToken) => {
     set({ loading: true, error: null });
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: { full_name: fullName, role },
+        ...(captchaToken ? { captchaToken } : {}),
       },
     });
-    set({ loading: false });
     if (error) {
-      set({ error: error.message });
+      set({ error: error.message, loading: false });
       return { error: error.message };
     }
+
+    const userId = data.user?.id;
+    if (userId) {
+      // Store pending verification info for the resend flow
+      set({
+        pendingVerificationEmail: email,
+        pendingVerificationUserId: userId,
+        pendingVerificationName: fullName,
+      });
+
+      // Send verification email via Resend (edge function)
+      try {
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+        const { data: { session } } = await supabase.auth.getSession();
+        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+        const res = await fetch(`${supabaseUrl}/functions/v1/send-verification-email`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session?.access_token || anonKey}`,
+            'apikey': anonKey,
+          },
+          body: JSON.stringify({ email, userId, fullName }),
+        });
+
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          console.error('Failed to send verification email:', errBody);
+          // Don't fail registration — user can resend later
+        }
+      } catch (e) {
+        console.error('Error calling send-verification-email:', e);
+      }
+    }
+
+    set({ loading: false });
     return { error: null };
+  },
+
+  resendVerification: async () => {
+    const { pendingVerificationEmail, pendingVerificationUserId, pendingVerificationName } = get();
+    if (!pendingVerificationEmail || !pendingVerificationUserId) {
+      return { error: 'No pending verification' };
+    }
+
+    set({ loading: true, error: null });
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+      const { data: { session } } = await supabase.auth.getSession();
+
+      const res = await fetch(`${supabaseUrl}/functions/v1/send-verification-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token || anonKey}`,
+          'apikey': anonKey,
+        },
+        body: JSON.stringify({
+          email: pendingVerificationEmail,
+          userId: pendingVerificationUserId,
+          fullName: pendingVerificationName,
+        }),
+      });
+
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        set({ loading: false });
+        return { error: errBody.error || 'Failed to resend verification email' };
+      }
+
+      set({ loading: false });
+      return { error: null };
+    } catch (e) {
+      console.error('Error resending verification email:', e);
+      set({ loading: false });
+      return { error: 'Failed to resend verification email' };
+    }
   },
 
   loginWithGoogle: async () => {

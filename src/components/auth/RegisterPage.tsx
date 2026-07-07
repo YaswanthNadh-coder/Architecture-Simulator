@@ -6,7 +6,7 @@ import { useAuthStore } from '../../store/authStore';
 
 export const RegisterPage = () => {
   const navigate = useNavigate();
-  const { register, loginWithGoogle, loading, error, clearError } = useAuthStore();
+  const { register, resendVerification, loginWithGoogle, loading, error, clearError } = useAuthStore();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -16,11 +16,20 @@ export const RegisterPage = () => {
   const [agreed, setAgreed] = useState(false);
   const [localErr, setLocalErr] = useState('');
   const [success, setSuccess] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resendSuccess, setResendSuccess] = useState(false);
   const timeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     return () => { if (timeoutRef.current) clearTimeout(timeoutRef.current); };
   }, []);
+
+  // Resend cooldown timer
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setTimeout(() => setResendCooldown(c => c - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [resendCooldown]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,7 +42,18 @@ export const RegisterPage = () => {
     const { error: err } = await register(email, password, fullName, role);
     if (!err) {
       setSuccess(true);
-      timeoutRef.current = window.setTimeout(() => navigate('/login'), 3000);
+      timeoutRef.current = window.setTimeout(() => navigate('/login'), 8000);
+    }
+  };
+
+  const handleResend = async () => {
+    setResendSuccess(false);
+    const { error: err } = await resendVerification();
+    if (!err) {
+      setResendSuccess(true);
+      setResendCooldown(60); // 60-second cooldown
+    } else {
+      setLocalErr(err);
     }
   };
 
@@ -50,6 +70,26 @@ export const RegisterPage = () => {
           </div>
           <h2 className="text-xl font-bold text-white mb-2">Check your email!</h2>
           <p className="text-text-muted text-sm">We sent a confirmation link to <span className="text-white">{email}</span>. Click it to activate your account.</p>
+
+          {resendSuccess && (
+            <div className="mt-3 rounded-lg px-3 py-2 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20">
+              Verification email resent!
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={handleResend}
+            disabled={loading || resendCooldown > 0}
+            className="mt-4 text-sm text-brand-400 hover:text-brand-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {resendCooldown > 0
+              ? `Resend available in ${resendCooldown}s`
+              : loading
+                ? 'Sending…'
+                : 'Resend verification email'}
+          </button>
+
           <p className="text-text-muted/60 text-xs mt-4">Redirecting to login…</p>
         </motion.div>
       </div>

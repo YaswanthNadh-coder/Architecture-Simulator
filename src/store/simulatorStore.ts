@@ -175,37 +175,63 @@ const EMPTY_STATS: SimStats = {
 };
 
 const INITIAL_CODE = `# MIPS Pipeline Demo — Bubble Sort
-# Demonstrates .data section, loops, and memory access
+# Sorts an array of integers in ascending order
 
 .data
-array:  .word 5, 3, 8, 1, 4, 7, 2, 6
+array:  .word 64, 25, 12, 22, 11, 90, 45, 33
 size:   .word 8
 
 .text
 main:
-  # Load array base and size
-  la    $t0, array        # $t0 = base address
-  lw    $t1, 0($t0)       # load first element for demo
-  
-  # Fibonacci sequence
-  addi  $t2, $zero, 0     # fib(n-2) = 0
-  addi  $t3, $zero, 1     # fib(n-1) = 1
-  addi  $t5, $zero, 8     # loop counter
+  la    $s0, array       # $s0 = base address
+  addi  $s1, $zero, 8    # size = 8
 
-fib_loop:
-  add   $t4, $t2, $t3     # fib = fib(n-2) + fib(n-1)
-  add   $t2, $t3, $zero   # advance fib(n-2)
-  add   $t3, $t4, $zero   # advance fib(n-1)
-  addi  $t5, $t5, -1      # decrement counter
-  bne   $t5, $zero, fib_loop
+outer:
+  addi  $t0, $zero, 0    # swapped = false
+  addi  $t1, $zero, 0    # i = 0
+  addi  $t2, $s1, -1     # limit = size - 1
 
-  # Print result
-  addi  $v0, $zero, 1     # syscall 1 = print_int
-  add   $a0, $t4, $zero   # $a0 = final fibonacci number
+inner:
+  beq   $t1, $t2, check_swap
+
+  # Load array[i] and array[i+1]
+  sll   $t3, $t1, 2      # offset = i * 4
+  add   $t3, $s0, $t3    # addr = base + offset
+  lw    $t4, 0($t3)      # array[i]
+  lw    $t5, 4($t3)      # array[i+1]
+
+  # Compare and swap if needed
+  slt   $t6, $t5, $t4    # if array[i+1] < array[i]
+  beq   $t6, $zero, no_swap
+
+  sw    $t5, 0($t3)      # swap: array[i] = array[i+1]
+  sw    $t4, 4($t3)      # swap: array[i+1] = array[i]
+  addi  $t0, $zero, 1    # swapped = true
+
+no_swap:
+  addi  $t1, $t1, 1      # i++
+  j     inner
+
+check_swap:
+  bne   $t0, $zero, outer  # if swapped, repeat
+
+  # Print sorted array
+  addi  $t1, $zero, 0    # i = 0
+print_loop:
+  beq   $t1, $s1, done
+  sll   $t3, $t1, 2
+  add   $t3, $s0, $t3
+  lw    $a0, 0($t3)
+  addi  $v0, $zero, 1    # syscall 1 = print int
   syscall
+  addi  $v0, $zero, 11   # syscall 11 = print char
+  addi  $a0, $zero, 32   # 32 = space
+  syscall
+  addi  $t1, $t1, 1      # i++
+  j     print_loop
 
-  # Exit
-  addi  $v0, $zero, 10    # syscall 10 = exit
+done:
+  addi  $v0, $zero, 10   # syscall 10 = exit
   syscall
 `;
 

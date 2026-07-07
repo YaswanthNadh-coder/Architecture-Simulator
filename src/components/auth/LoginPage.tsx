@@ -1,16 +1,18 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Mail, Lock, Eye, EyeOff, Zap } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Zap, CheckCircle } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 
 export const LoginPage = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { login, loginWithGoogle, loading, error, clearError, isAuthenticated } = useAuthStore();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPwd, setShowPwd] = useState(false);
   const [localErr, setLocalErr] = useState('');
+  const verified = searchParams.get('verified') === 'true';
 
   // Clear any stale auth errors when the login page mounts
   // (e.g. from a previous session or email confirmation redirect)
@@ -75,6 +77,18 @@ export const LoginPage = () => {
             <h1 className="text-2xl font-bold text-white">Welcome back</h1>
             <p className="text-text-muted text-sm mt-1">Sign in to ArchSim</p>
           </div>
+
+          {/* Email verified banner */}
+          {verified && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-center gap-2 rounded-lg px-3 py-2.5 mb-6 text-sm text-emerald-400 bg-emerald-500/10 border border-emerald-500/20"
+            >
+              <CheckCircle size={16} />
+              Email verified successfully! You can now sign in.
+            </motion.div>
+          )}
 
           {/* Google OAuth */}
           <button
