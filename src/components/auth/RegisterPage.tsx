@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Mail, Lock, User, Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
+import { Turnstile } from './Turnstile';
 
 export const RegisterPage = () => {
   const navigate = useNavigate();
@@ -18,7 +19,17 @@ export const RegisterPage = () => {
   const [success, setSuccess] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
   const [resendSuccess, setResendSuccess] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaResetKey, setCaptchaResetKey] = useState(0);
   const timeoutRef = useRef<number | null>(null);
+
+  const handleCaptchaVerify = useCallback((token: string) => {
+    setCaptchaToken(token);
+  }, []);
+
+  const handleCaptchaExpire = useCallback(() => {
+    setCaptchaToken(null);
+  }, []);
 
   useEffect(() => {
     return () => { if (timeoutRef.current) clearTimeout(timeoutRef.current); };
@@ -39,10 +50,17 @@ export const RegisterPage = () => {
     if (password !== confirm) { setLocalErr('Passwords do not match.'); return; }
     if (password.length < 6) { setLocalErr('Password must be at least 6 characters.'); return; }
     if (!agreed) { setLocalErr('Please accept the terms of service.'); return; }
-    const { error: err } = await register(email, password, fullName, role);
+    // Check CAPTCHA if site key is configured
+    const siteKey = import.meta.env.VITE_TURNSTILE_SITE_KEY;
+    if (siteKey && !captchaToken) { setLocalErr('Please complete the CAPTCHA verification.'); return; }
+    const { error: err } = await register(email, password, fullName, role, captchaToken || undefined);
     if (!err) {
       setSuccess(true);
       timeoutRef.current = window.setTimeout(() => navigate('/login'), 8000);
+    } else {
+      // Reset captcha on failure so user can retry
+      setCaptchaToken(null);
+      setCaptchaResetKey(k => k + 1);
     }
   };
 
@@ -190,6 +208,13 @@ export const RegisterPage = () => {
             {displayError && (
               <div className="rounded-lg px-3 py-2.5 text-xs text-red-400 bg-red-500/10 border border-red-500/20">{displayError}</div>
             )}
+
+            {/* Cloudflare Turnstile CAPTCHA — invisible unless interaction needed */}
+            <Turnstile
+              onVerify={handleCaptchaVerify}
+              onExpire={handleCaptchaExpire}
+              resetKey={captchaResetKey}
+            />
 
             <button type="submit" disabled={loading}
               className="w-full py-2.5 rounded-xl font-semibold text-sm text-white transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed"

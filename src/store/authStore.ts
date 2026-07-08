@@ -170,6 +170,16 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       } catch (e) {
         console.error('Error calling send-verification-email:', e);
       }
+
+      // ── Sign out after registration ──
+      // Since "Confirm email" is disabled in Supabase, signUp() returns a valid
+      // session immediately. The edge function un-confirms the user, but the
+      // frontend still holds the session. Sign out to prevent accessing protected
+      // routes before email verification.
+      try {
+        await supabase.auth.signOut();
+      } catch { /* ignore signout errors */ }
+      set({ user: null, isAuthenticated: false, profile: null });
     }
 
     set({ loading: false });

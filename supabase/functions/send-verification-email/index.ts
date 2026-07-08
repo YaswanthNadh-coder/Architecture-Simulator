@@ -1,5 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')!;
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
@@ -47,10 +47,10 @@ serve(async (req) => {
 
     // ── Validate userId matches the JWT caller ──
     const authHeader = req.headers.get('authorization') || '';
-    const token = authHeader.replace('Bearer ', '');
+    const authToken = authHeader.replace('Bearer ', '');
     // If a real JWT is provided (not the anon key), verify the caller
-    if (token && token !== Deno.env.get('SUPABASE_ANON_KEY')) {
-      const supabaseAuth = createClient(SUPABASE_URL, token);
+    if (authToken && authToken !== Deno.env.get('SUPABASE_ANON_KEY')) {
+      const supabaseAuth = createClient(SUPABASE_URL, authToken);
       const { data: { user: caller }, error: authError } = await supabaseAuth.auth.getUser();
       if (!authError && caller && caller.id !== userId) {
         return new Response(
@@ -83,6 +83,14 @@ serve(async (req) => {
         );
       }
     }
+
+    // ── Un-confirm the user ──
+    // Since Supabase's "Confirm email" is disabled (to prevent double emails),
+    // users are auto-confirmed on signup. We explicitly un-confirm them here
+    // so they can't sign in until they verify via our Resend link.
+    await supabaseAdmin.auth.admin.updateUserById(userId, {
+      email_confirm: false,
+    });
 
     // Delete any existing tokens for this user (in case of resend)
     await supabaseAdmin

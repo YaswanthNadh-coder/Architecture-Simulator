@@ -36,7 +36,9 @@ export const useAssignmentStore = create<AssignmentStore>()(
         // Auto-sync to Supabase
         const user = useAuthStore.getState().profile;
         if (user) {
-          saveAssignmentToSupabase(assignment, user.id).catch(() => {});
+          saveAssignmentToSupabase(assignment, user.id).catch(() => {
+            set({ lastSyncError: 'Failed to save new assignment to cloud.' });
+          });
         }
       },
 
@@ -48,7 +50,9 @@ export const useAssignmentStore = create<AssignmentStore>()(
         }));
         const user = useAuthStore.getState().profile;
         if (user) {
-          saveAssignmentToSupabase(updated, user.id).catch(() => {});
+          saveAssignmentToSupabase(updated, user.id).catch(() => {
+            set({ lastSyncError: 'Failed to update assignment in cloud.' });
+          });
         }
       },
 
@@ -56,7 +60,9 @@ export const useAssignmentStore = create<AssignmentStore>()(
         set((state) => ({
           customAssignments: state.customAssignments.filter((a) => a.id !== id),
         }));
-        deleteAssignmentFromSupabase(id).catch(() => {});
+        deleteAssignmentFromSupabase(id).catch(() => {
+          set({ lastSyncError: 'Failed to delete assignment from cloud.' });
+        });
       },
 
       duplicateAssignment: (id) => {
@@ -78,7 +84,9 @@ export const useAssignmentStore = create<AssignmentStore>()(
         set((state) => ({ customAssignments: [...state.customAssignments, duplicate] }));
         const user = useAuthStore.getState().profile;
         if (user) {
-          saveAssignmentToSupabase(duplicate, user.id).catch(() => {});
+          saveAssignmentToSupabase(duplicate, user.id).catch(() => {
+            set({ lastSyncError: 'Failed to save duplicated assignment to cloud.' });
+          });
         }
       },
 

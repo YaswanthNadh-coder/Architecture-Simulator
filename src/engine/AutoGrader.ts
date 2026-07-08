@@ -56,7 +56,7 @@ export class AutoGrader {
 
     // 2. Run Test Cases
     for (const tc of assignment.testCases) {
-      const tcResult = this.runTestCase(assemblyResult, tc, useForwarding, assignment.isa ?? 'mips');
+      const tcResult = this.runTestCase(assemblyResult, tc, useForwarding, assignment.isa ?? 'mips', assignment.maxCyclesLimit);
       report.testResults.push(tcResult);
       totalCorrectnessScore += tcResult.score;
       
@@ -74,7 +74,7 @@ export class AutoGrader {
     engine.loadProgram(assemblyResult.instructions);
     engine.loadDataSegment(assemblyResult.dataSegment);
     let metricsCycles = 0;
-    const MAX_CYCLES = 10000;
+    const MAX_CYCLES = assignment.maxCyclesLimit ?? 10000;
     while (!engine.isFinished() && metricsCycles < MAX_CYCLES) {
       engine.step();
       metricsCycles++;
@@ -105,7 +105,8 @@ export class AutoGrader {
     assemblyResult: ReturnType<typeof assemble>, 
     tc: TestCase,
     useForwarding: boolean,
-    isa: 'mips' | 'riscv'
+    isa: 'mips' | 'riscv',
+    maxCyclesLimit?: number
   ): TestCaseResult {
     const engine = new MIPSPipelineEngine();
     engine.forwardingEnabled = useForwarding;
@@ -130,7 +131,7 @@ export class AutoGrader {
 
     // Run execution
     let cycles = 0;
-    const MAX_CYCLES = 10000;
+    const MAX_CYCLES = maxCyclesLimit ?? 10000;
     while (!engine.isFinished() && cycles < MAX_CYCLES) {
       engine.step();
       cycles++;
@@ -177,7 +178,13 @@ export class AutoGrader {
         const b1 = mem.get(addr + 1) ?? 0;
         const b2 = mem.get(addr + 2) ?? 0;
         const b3 = mem.get(addr + 3) ?? 0;
-        const actualVal = (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
+        
+        let actualVal = 0;
+        if (isa === 'riscv') {
+          actualVal = (b3 << 24) | (b2 << 16) | (b1 << 8) | b0;
+        } else {
+          actualVal = (b0 << 24) | (b1 << 16) | (b2 << 8) | b3;
+        }
 
         if (actualVal !== expVal) {
           passed = false;
