@@ -17,7 +17,7 @@ interface AuthStore {
   pendingVerificationName: string | null;
   // Actions
   initialize: () => Promise<void>;
-  login: (email: string, password: string) => Promise<{ error: string | null }>;
+  login: (email: string, password: string, captchaToken?: string) => Promise<{ error: string | null }>;
   register: (email: string, password: string, fullName: string, role: 'student' | 'instructor', captchaToken?: string) => Promise<{ error: string | null }>;
   resendVerification: () => Promise<{ error: string | null }>;
   loginWithGoogle: () => Promise<void>;
@@ -103,87 +103,93 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     }
   },
 
-  login: async (email, password) => {
+  login: async (email, password, captchaToken) => {
     set({ loading: true, error: null });
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      set({ error: error.message, loading: false });
-      return { error: error.message };
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ 
+        email, 
+        password,
+        ...(captchaToken ? { options: { captchaToken } } : {})
+      });
+      if (error) {
+        set({ error: error.message });
+        return { error: error.message };
+      }
+      if (data.user) {
+        const edu = isEduEmail(data.user.email ?? '');
+        set({ user: data.user, isAuthenticated: true, isEdu: edu });
+        await get().fetchProfile(data.user.id);
+      }
+      return { error: null };
+    } catch (e: any) {
+      console.error('Login error:', e);
+      set({ error: e.message || 'An unexpected error occurred' });
+      return { error: e.message || 'An unexpected error occurred' };
+    } finally {
+      set({ loading: false });
     }
-    // Set auth state immediately from the response — don't wait for
-    // onAuthStateChange which fires asynchronously and causes a race
-    // with navigate('/') in handleSubmit.
-    if (data.user) {
-      const edu = isEduEmail(data.user.email ?? '');
-      set({ user: data.user, isAuthenticated: true, isEdu: edu });
-      await get().fetchProfile(data.user.id);
-    }
-    set({ loading: false });
-    return { error: null };
   },
 
   register: async (email, password, fullName, role, captchaToken) => {
     set({ loading: true, error: null });
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { full_name: fullName, role },
-        ...(captchaToken ? { captchaToken } : {}),
-      },
-    });
-    if (error) {
-      set({ error: error.message, loading: false });
-      return { error: error.message };
-    }
-
-    const userId = data.user?.id;
-    if (userId) {
-      // Store pending verification info for the resend flow
-      set({
-        pendingVerificationEmail: email,
-        pendingVerificationUserId: userId,
-        pendingVerificationName: fullName,
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { full_name: fullName, role },
+          ...(captchaToken ? { captchaToken } : {}),
+        },
       });
-
-      // Send verification email via Resend (edge function)
-      try {
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
-        const { data: { session } } = await supabase.auth.getSession();
-        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
-
-        const res = await fetch(`${supabaseUrl}/functions/v1/send-verification-email`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${session?.access_token || anonKey}`,
-            'apikey': anonKey,
-          },
-          body: JSON.stringify({ email, userId, fullName }),
-        });
-
-        if (!res.ok) {
-          const errBody = await res.json().catch(() => ({}));
-          console.error('Failed to send verification email:', errBody);
-          // Don't fail registration — user can resend later
-        }
-      } catch (e) {
-        console.error('Error calling send-verification-email:', e);
+      if (error) {
+        set({ error: error.message });
+        return { error: error.message };
       }
 
-      // ── Sign out after registration ──
-      // Since "Confirm email" is disabled in Supabase, signUp() returns a valid
-      // session immediately. The edge function un-confirms the user, but the
-      // frontend still holds the session. Sign out to prevent accessing protected
-      // routes before email verification.
-      try {
-        await supabase.auth.signOut();
-      } catch { /* ignore signout errors */ }
-      set({ user: null, isAuthenticated: false, profile: null });
-    }
+      const userId = data.user?.id;
+      if (userId) {
+        set({
+          pendingVerificationEmail: email,
+          pendingVerificationUserId: userId,
+          pendingVerificationName: fullName,
+        });
 
-    set({ loading: false });
-    return { error: null };
+        try {
+          const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+          const { data: { session } } = await supabase.auth.getSession();
+          const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+          const res = await fetch(`${supabaseUrl}/functions/v1/send-verification-email`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session?.access_token || anonKey}`,
+              'apikey': anonKey,
+            },
+            body: JSON.stringify({ email, userId, fullName }),
+          });
+
+          if (!res.ok) {
+            const errBody = await res.json().catch(() => ({}));
+            console.error('Failed to send verification email:', errBody);
+          }
+        } catch (e) {
+          console.error('Error calling send-verification-email:', e);
+        }
+
+        try {
+          await supabase.auth.signOut();
+        } catch { /* ignore signout errors */ }
+        set({ user: null, isAuthenticated: false, profile: null });
+      }
+      return { error: null };
+    } catch (e: any) {
+      console.error('Register error:', e);
+      set({ error: e.message || 'An unexpected error occurred' });
+      return { error: e.message || 'An unexpected error occurred' };
+    } finally {
+      set({ loading: false });
+    }
   },
 
   resendVerification: async () => {
@@ -229,12 +235,17 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
 
   loginWithGoogle: async () => {
     set({ loading: true, error: null });
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: `${window.location.origin}/` },
-    });
-    if (error) {
-      set({ error: error.message, loading: false });
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: `${window.location.origin}/` },
+      });
+      if (error) set({ error: error.message });
+    } catch (e: any) {
+      console.error('Google login error:', e);
+      set({ error: e.message || 'An unexpected error occurred' });
+    } finally {
+      set({ loading: false });
     }
   },
 

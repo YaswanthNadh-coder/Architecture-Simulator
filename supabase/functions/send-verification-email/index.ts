@@ -48,11 +48,28 @@ serve(async (req) => {
     // ── Validate userId matches the JWT caller ──
     const authHeader = req.headers.get('authorization') || '';
     const authToken = authHeader.replace('Bearer ', '');
+    
+    // Robust detection: token is anon if it matches server key or decodes to role 'anon'
+    let isAnon = !authToken || authToken === Deno.env.get('SUPABASE_ANON_KEY');
+    if (!isAnon && authToken) {
+      try {
+        const parts = authToken.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(atob(parts[1]));
+          if (payload.role === 'anon') {
+            isAnon = true;
+          }
+        }
+      } catch (_) {
+        // Ignore decode/parse errors
+      }
+    }
+
     // If a real JWT is provided (not the anon key), verify the caller
-    if (authToken && authToken !== Deno.env.get('SUPABASE_ANON_KEY')) {
+    if (!isAnon) {
       const supabaseAuth = createClient(SUPABASE_URL, authToken);
       const { data: { user: caller }, error: authError } = await supabaseAuth.auth.getUser();
-      if (!authError && caller && caller.id !== userId) {
+      if (authError || !caller || caller.id !== userId) {
         return new Response(
           JSON.stringify({ error: 'userId does not match authenticated user' }),
           { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -62,6 +79,33 @@ serve(async (req) => {
 
     // Create a Supabase client with service role (bypasses RLS)
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+    // ── Verify target user and email match ──
+    const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
+    if (userError || !userData?.user) {
+      return new Response(
+        JSON.stringify({ error: 'User not found' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    const targetUser = userData.user;
+
+    // Prevent spamming random emails on behalf of a user
+    if (targetUser.email !== email) {
+      return new Response(
+        JSON.stringify({ error: 'Email mismatch' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Prevent anon users from locking out or spamming already verified users
+    if (isAnon && targetUser.email_confirmed_at != null) {
+      // Return 200 generic success to prevent email enumeration, but do nothing
+      return new Response(
+        JSON.stringify({ success: true, messageId: 'already_verified' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // ── Server-side rate limiting ──
     // Check if a token was created recently for this user
@@ -85,12 +129,13 @@ serve(async (req) => {
     }
 
     // ── Un-confirm the user ──
-    // Since Supabase's "Confirm email" is disabled (to prevent double emails),
-    // users are auto-confirmed on signup. We explicitly un-confirm them here
-    // so they can't sign in until they verify via our Resend link.
-    await supabaseAdmin.auth.admin.updateUserById(userId, {
-      email_confirm: false,
-    });
+    // Only explicitly un-confirm if they have a valid JWT (just registered).
+    // If it's an anon resend request, they must already be unconfirmed (checked above).
+    if (!isAnon) {
+      await supabaseAdmin.auth.admin.updateUserById(userId, {
+        email_confirm: false,
+      });
+    }
 
     // Delete any existing tokens for this user (in case of resend)
     await supabaseAdmin
