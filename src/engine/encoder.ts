@@ -215,7 +215,7 @@ function encodeRISCV(inst: ParsedInstruction): EncodedInstruction {
   } else if (branchOps[op] !== undefined) {
     format = 'B-type';
     const funct3 = branchOps[op];
-    const offset = inst.targetAddress ? (inst.targetAddress - inst.pc) : imm;
+    const offset = inst.targetAddress ? (inst.targetAddress - inst.address) : imm;
     const immBin = toBin(offset >> 1, 12); // B-type omits bit 0
 
     const imm12 = parseInt(immBin.slice(0, 1), 2);
@@ -244,7 +244,7 @@ function encodeRISCV(inst: ParsedInstruction): EncodedInstruction {
     addField('opcode', 0b0010111, 7);
   } else if (op === 'jal') {
     format = 'J-type';
-    const offset = inst.targetAddress ? (inst.targetAddress - inst.pc) : imm;
+    const offset = inst.targetAddress ? (inst.targetAddress - inst.address) : imm;
     const immBin = toBin(offset >> 1, 20); // J-type omits bit 0
 
     const imm20 = parseInt(immBin.slice(0, 1), 2);
