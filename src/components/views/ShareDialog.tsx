@@ -26,7 +26,7 @@ export const ShareDialog = ({ onClose }: { onClose: () => void }) => {
         branchPrediction,
         isa,
       });
-      setShareUrl(url);
+      queueMicrotask(() => setShareUrl(url));
     }
   }, [mode, code, forwardingEnabled, branchPrediction, isa]);
 

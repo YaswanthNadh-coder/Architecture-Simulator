@@ -60,7 +60,7 @@ export const LoginPage = () => {
   const displayError = localErr || error;
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center relative overflow-hidden"
+    <div className="min-h-screen w-full flex items-center justify-center relative overflow-y-auto p-4 py-12 pb-24 custom-scrollbar"
       style={{ background: 'var(--color-bg-base)' }}>
 
       {/* Animated background blobs */}

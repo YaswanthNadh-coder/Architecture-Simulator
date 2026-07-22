@@ -7,22 +7,21 @@ import { useAuthStore } from '../../store/authStore';
 export const AnalyticsDashboard = () => {
   const { profile } = useAuthStore();
   const [sessions, setSessions] = useState<AnalyticsSession[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!!profile);
 
   useEffect(() => {
-    if (profile) {
-      getAnalyticsData(profile.id).then(({ sessions, error }) => {
-        if (!error && sessions.length > 0) {
-          setSessions(sessions);
-        } else if (sessions.length === 0) {
-          // If no real data, keep empty state or show minimal
-          setSessions([]);
-        }
-        setLoading(false);
-      });
-    } else {
+    if (!profile) return;
+    let isMounted = true;
+    getAnalyticsData(profile.id).then(({ sessions, error }) => {
+      if (!isMounted) return;
+      if (!error && sessions.length > 0) {
+        setSessions(sessions);
+      } else {
+        setSessions([]);
+      }
       setLoading(false);
-    }
+    });
+    return () => { isMounted = false; };
   }, [profile]);
 
   const avgCpi = useMemo(() => {

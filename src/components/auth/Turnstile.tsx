@@ -54,9 +54,10 @@ export const Turnstile = ({ onVerify, onExpire, onError, resetKey }: TurnstilePr
       'error-callback': () => onError?.(),
     });
   }, [siteKey, onVerify, onExpire, onError]);
-
   // Mount / reset
   useEffect(() => {
+    const node = containerRef.current;
+
     // Turnstile script may not be loaded yet — poll briefly
     if (window.turnstile) {
       renderWidget();
@@ -73,7 +74,7 @@ export const Turnstile = ({ onVerify, onExpire, onError, resetKey }: TurnstilePr
     }
 
     return () => {
-      if (widgetIdRef.current && window.turnstile) {
+      if (widgetIdRef.current && window.turnstile && node && document.body.contains(node)) {
         try { window.turnstile.remove(widgetIdRef.current); } catch { /* ignore */ }
       }
     };

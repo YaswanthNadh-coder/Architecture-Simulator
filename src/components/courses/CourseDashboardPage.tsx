@@ -59,7 +59,9 @@ export const CourseDashboardPage = () => {
 
   useEffect(() => {
     if (profile && courseId) {
-      loadData();
+      queueMicrotask(() => {
+        loadData();
+      });
     }
   }, [profile, courseId]);
 

@@ -17,7 +17,7 @@ export const LearnPage = () => {
   const advanced = TUTORIAL_LESSONS.filter(l => l.difficulty === 'advanced');
 
   return (
-    <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+    <div className="flex-1 overflow-y-auto p-8 pb-32 custom-scrollbar">
       <div className="max-w-5xl mx-auto space-y-12">
         {/* Header Section */}
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
@@ -27,7 +27,7 @@ export const LearnPage = () => {
               Interactive Pipeline Course
             </h1>
             <p className="text-text-muted text-sm max-w-2xl leading-relaxed">
-              Master computer architecture from the ground up. This 10-lesson interactive course guides you through pipeline stages, data hazards, forwarding, and code optimization using real simulations.
+              Master computer architecture from the ground up. This 11-lesson interactive course guides you through pipeline stages, system calls (syscall), data hazards, forwarding, and code optimization using real simulations.
             </p>
           </div>
           
@@ -299,13 +299,13 @@ export function CurriculumLabsSection() {
                   <div className="bg-bg-panel/40 border border-border-subtle/50 rounded-xl p-5 text-xs text-text-main leading-relaxed space-y-3">
                     <ReactMarkdown
                       components={{
-                        h2: ({ node, ...props }) => <h3 className="text-sm font-bold text-white mt-4 mb-2 border-b border-border-subtle/30 pb-1" {...props} />,
-                        h3: ({ node, ...props }) => <h4 className="text-xs font-bold text-white mt-3 mb-1" {...props} />,
-                        p: ({ node, ...props }) => <p className="mb-2 text-text-muted" {...props} />,
-                        ul: ({ node, ...props }) => <ul className="list-disc pl-4 mb-3 space-y-1 text-text-muted" {...props} />,
-                        ol: ({ node, ...props }) => <ol className="list-decimal pl-4 mb-3 space-y-1 text-text-muted" {...props} />,
-                        li: ({ node, ...props }) => <li className="pl-1" {...props} />,
-                        code: ({ node, inline, className, children, ...props }: any) => {
+                        h2: ({ node: _node, ...props }: any) => <h3 className="text-sm font-bold text-white mt-4 mb-2 border-b border-border-subtle/30 pb-1" {...props} />,
+                        h3: ({ node: _node, ...props }: any) => <h4 className="text-xs font-bold text-white mt-3 mb-1" {...props} />,
+                        p: ({ node: _node, ...props }: any) => <p className="mb-2 text-text-muted" {...props} />,
+                        ul: ({ node: _node, ...props }: any) => <ul className="list-disc pl-4 mb-3 space-y-1 text-text-muted" {...props} />,
+                        ol: ({ node: _node, ...props }: any) => <ol className="list-decimal pl-4 mb-3 space-y-1 text-text-muted" {...props} />,
+                        li: ({ node: _node, ...props }: any) => <li className="pl-1" {...props} />,
+                        code: ({ node: _node, inline, className: _className, children, ...props }: any) => {
                           return inline ? (
                             <code className="bg-bg-panel border border-border-subtle px-1.5 py-0.5 rounded text-brand-400 font-mono text-[10px]" {...props}>
                               {children}
@@ -316,10 +316,10 @@ export function CurriculumLabsSection() {
                             </pre>
                           );
                         },
-                        table: ({ node, ...props }) => <table className="w-full text-left border-collapse border border-border-subtle text-[11px] my-4" {...props} />,
-                        thead: ({ node, ...props }) => <thead className="bg-bg-panel" {...props} />,
-                        th: ({ node, ...props }) => <th className="border border-border-subtle p-2 font-bold text-white" {...props} />,
-                        td: ({ node, ...props }) => <td className="border border-border-subtle p-2 text-text-muted" {...props} />,
+                        table: ({ node: _node, ...props }: any) => <table className="w-full text-left border-collapse border border-border-subtle text-[11px] my-4" {...props} />,
+                        thead: ({ node: _node, ...props }: any) => <thead className="bg-bg-panel" {...props} />,
+                        th: ({ node: _node, ...props }: any) => <th className="border border-border-subtle p-2 font-bold text-white" {...props} />,
+                        td: ({ node: _node, ...props }: any) => <td className="border border-border-subtle p-2 text-text-muted" {...props} />,
                       }}
                     >
                       {selectedLab.instructions}

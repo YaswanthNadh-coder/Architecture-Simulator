@@ -292,6 +292,179 @@ len_done:
   ret
 `,
   },
+  {
+    id: 'rv-matrix-mult',
+    name: 'Matrix Multiplication 3x3 (RISC-V)',
+    category: 'algorithms',
+    description: 'Multiply two 3x3 matrices in memory using RISC-V RV32I. Demonstrates triple-nested loops and offset math.',
+    difficulty: 'Advanced',
+    tags: ['matrices', 'arrays', 'nested-loops'],
+    code: `# Matrix Multiplication 3x3 — RISC-V RV32I
+.data
+A: .word 1, 2, 3,  4, 5, 6,  7, 8, 9
+B: .word 1, 0, 0,  0, 1, 0,  0, 0, 1
+C: .space 36
+
+.text
+main:
+  la    s0, A
+  la    s1, B
+  la    s2, C
+  li    s4, 3          # dim = 3
+  li    t0, 0          # i = 0
+
+i_loop:
+  beq   t0, s4, done
+  li    t1, 0          # j = 0
+
+j_loop:
+  beq   t1, s4, next_i
+  li    t2, 0          # k = 0
+  li    s3, 0          # sum = 0
+
+k_loop:
+  beq   t2, s4, store_c
+
+  # A[i][k] offset = (i * 3 + k) * 4
+  li    t3, 3
+  add   t4, zero, zero
+mult_a:
+  beq   t3, zero, mult_a_done
+  add   t4, t4, t0
+  addi  t3, t3, -1
+  j     mult_a
+mult_a_done:
+  add   t4, t4, t2
+  slli  t4, t4, 2
+  add   t4, s0, t4
+  lw    a1, 0(t4)      # A[i][k]
+
+  # B[k][j] offset = (k * 3 + j) * 4
+  li    t3, 3
+  add   t5, zero, zero
+mult_b:
+  beq   t3, zero, mult_b_done
+  add   t5, t5, t2
+  addi  t3, t3, -1
+  j     mult_b
+mult_b_done:
+  add   t5, t5, t1
+  slli  t5, t5, 2
+  add   t5, s1, t5
+  lw    a2, 0(t5)      # B[k][j]
+
+  # sum += A[i][k] * B[k][j]
+  add   t3, a2, zero
+mult_p:
+  beq   t3, zero, mult_p_done
+  add   s3, s3, a1
+  addi  t3, t3, -1
+  j     mult_p
+mult_p_done:
+
+  addi  t2, t2, 1
+  j     k_loop
+
+store_c:
+  li    t3, 3
+  add   t4, zero, zero
+mult_c:
+  beq   t3, zero, mult_c_done
+  add   t4, t4, t0
+  addi  t3, t3, -1
+  j     mult_c
+mult_c_done:
+  add   t4, t4, t1
+  slli  t4, t4, 2
+  add   t4, s2, t4
+  sw    s3, 0(t4)
+
+  addi  t1, t1, 1
+  j     j_loop
+
+next_i:
+  addi  t0, t0, 1
+  j     i_loop
+
+done:
+  li    a7, 10
+  ecall
+`,
+  },
+  {
+    id: 'rv-selection-sort',
+    name: 'Selection Sort (RISC-V)',
+    category: 'algorithms',
+    description: 'Sort an array of integers using Selection Sort algorithm in RISC-V RV32I.',
+    difficulty: 'Intermediate',
+    tags: ['sorting', 'arrays', 'loops'],
+    code: `# Selection Sort Algorithm — RISC-V RV32I
+.data
+array: .word 29, 10, 14, 37, 13
+size:  .word 5
+
+.text
+main:
+  la    s0, array
+  la    s1, size
+  lw    s1, 0(s1)
+  li    t0, 0          # i = 0
+  addi  t6, s1, -1     # size - 1
+
+outer_loop:
+  beq   t0, t6, done
+  mv    t1, t0         # min_idx = i
+
+  mv    t2, t0
+  addi  t2, t2, 1      # j = i + 1
+
+inner_loop:
+  beq   t2, s1, check_swap
+
+  # Load array[j]
+  slli  t3, t2, 2
+  add   t3, s0, t3
+  lw    t4, 0(t3)
+
+  # Load array[min_idx]
+  slli  t5, t1, 2
+  add   t5, s0, t5
+  lw    s7, 0(t5)
+
+  blt   t4, s7, set_min
+  j     next_j
+
+set_min:
+  mv    t1, t2         # min_idx = j
+
+next_j:
+  addi  t2, t2, 1
+  j     inner_loop
+
+check_swap:
+  beq   t1, t0, next_i
+
+  # Swap array[i] and array[min_idx]
+  slli  t3, t0, 2
+  add   t3, s0, t3
+  lw    t4, 0(t3)
+
+  slli  t5, t1, 2
+  add   t5, s0, t5
+  lw    s7, 0(t5)
+
+  sw    s7, 0(t3)
+  sw    t4, 0(t5)
+
+next_i:
+  addi  t0, t0, 1
+  j     outer_loop
+
+done:
+  li    a7, 10
+  ecall
+`,
+  }
 ];
 
 export const RISCV_CATEGORIES = [

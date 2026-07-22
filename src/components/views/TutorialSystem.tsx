@@ -56,12 +56,11 @@ export const TutorialSystem = () => {
     }
   }, [isActive, step, nextCycle]);
 
-  // Reset question state when step changes
-  useEffect(() => {
+  const resetQuestionState = () => {
     setSelectedOption(null);
     setShowExplanation(false);
     setIsCorrect(null);
-  }, [currentStepIndex]);
+  };
 
   if (!isActive || !lesson || !step) return null;
 
@@ -73,6 +72,7 @@ export const TutorialSystem = () => {
   };
 
   const handleNext = () => {
+    resetQuestionState();
     if (isLastStep) {
       completeLesson();
       exitLesson();

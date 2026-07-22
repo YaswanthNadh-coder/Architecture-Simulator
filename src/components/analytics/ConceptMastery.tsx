@@ -6,17 +6,17 @@ import { useAuthStore } from '../../store/authStore';
 export const ConceptMastery = () => {
   const { profile } = useAuthStore();
   const [concepts, setConcepts] = useState<ConceptMasteryData[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!!profile);
 
   useEffect(() => {
-    if (profile) {
-      getConceptMasteryData(profile.id).then(({ concepts }) => {
-        setConcepts(concepts);
-        setLoading(false);
-      });
-    } else {
+    if (!profile) return;
+    let isMounted = true;
+    getConceptMasteryData(profile.id).then(({ concepts }) => {
+      if (!isMounted) return;
+      setConcepts(concepts);
       setLoading(false);
-    }
+    });
+    return () => { isMounted = false; };
   }, [profile]);
 
   if (loading) return <div className="text-text-muted">Loading concepts...</div>;

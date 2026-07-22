@@ -97,12 +97,13 @@ export const ArchitectureSettingsPanel = () => {
     forwardingEnabled, toggleForwarding,
     branchPrediction, setBranchPrediction,
     memoryLatency, setMemoryLatency,
-    cacheConfig, setCacheConfig,
+    cacheHierarchyConfig, setCacheHierarchyConfig,
     isa, setISA
   } = useSimulatorStore();
   
   const { canAccess } = useSubscriptionStore();
   const [isOpen, setIsOpen] = useState(false);
+  const [activeCacheLevel, setActiveCacheLevel] = useState<'L1' | 'L2' | 'L3'>('L1');
 
   return (
     <>
@@ -277,92 +278,216 @@ export const ArchitectureSettingsPanel = () => {
                   </div>
                 </div>
 
-                {/* Cache Configuration */}
+                {/* Cache Hierarchy Configuration */}
                 <div className="space-y-4 pt-6 border-t border-border-subtle">
                   <div className="flex items-start justify-between">
                     <div>
-                      <h3 className="text-sm font-bold text-white mb-1">L1 Cache Simulator</h3>
+                      <h3 className="text-sm font-bold text-white mb-1">Cache Hierarchy Simulator</h3>
                       <p className="text-xs text-text-muted pr-4">
-                        Simulate memory hierarchy with a configurable L1 Data Cache.
+                        Configurable multi-level cache hierarchy (L1, L2, and L3).
                       </p>
                     </div>
                     <label className="relative inline-flex items-center cursor-pointer shrink-0 mt-1">
                       <input 
                         type="checkbox" 
                         className="sr-only peer"
-                        checked={cacheConfig.enabled}
-                        onChange={(e) => setCacheConfig({ ...cacheConfig, enabled: e.target.checked })}
+                        checked={cacheHierarchyConfig.l1.enabled}
+                        onChange={(e) => setCacheHierarchyConfig({
+                          ...cacheHierarchyConfig,
+                          l1: { ...cacheHierarchyConfig.l1, enabled: e.target.checked }
+                        })}
                       />
                       <div className="w-9 h-5 bg-bg-panel peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-text-muted peer-checked:after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500 border border-border-subtle"></div>
                     </label>
                   </div>
 
-                  {cacheConfig.enabled && (
+                  {cacheHierarchyConfig.l1.enabled && (
                     <div className="space-y-3 bg-bg-panel p-4 rounded-xl border border-border-subtle">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-text-muted">Cache Size (Bytes)</span>
-                        <select 
-                          value={cacheConfig.cacheSize}
-                          onChange={(e) => setCacheConfig({ ...cacheConfig, cacheSize: parseInt(e.target.value, 10) })}
-                          className="bg-bg-base border border-border-subtle text-white text-xs rounded-lg px-2 py-1 outline-none"
-                        >
-                          <option value="64">64 B</option>
-                          <option value="128">128 B</option>
-                          <option value="256">256 B</option>
-                          <option value="512">512 B</option>
-                        </select>
+                      {/* Level selector tabs */}
+                      <div className="flex items-center gap-1 bg-bg-base p-1 rounded-lg border border-border-subtle">
+                        {(['L1', 'L2', 'L3'] as const).map((lvl) => {
+                          const lvlConfig = lvl === 'L1' ? cacheHierarchyConfig.l1 : lvl === 'L2' ? cacheHierarchyConfig.l2 : cacheHierarchyConfig.l3;
+                          return (
+                            <button
+                              key={lvl}
+                              onClick={() => setActiveCacheLevel(lvl)}
+                              className={`flex-1 py-1 text-xs font-bold rounded-md transition-all flex items-center justify-center gap-1.5 ${
+                                activeCacheLevel === lvl
+                                  ? 'bg-brand-500 text-white shadow-md'
+                                  : 'text-text-muted hover:text-white'
+                              }`}
+                            >
+                              <span>{lvl} Cache</span>
+                              {lvl !== 'L1' && (
+                                <span className={`w-1.5 h-1.5 rounded-full ${lvlConfig.enabled ? 'bg-emerald-400' : 'bg-gray-600'}`} />
+                              )}
+                            </button>
+                          );
+                        })}
                       </div>
 
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-text-muted">Block Size (Bytes)</span>
-                        <select 
-                          value={cacheConfig.blockSize}
-                          onChange={(e) => setCacheConfig({ ...cacheConfig, blockSize: parseInt(e.target.value, 10) })}
-                          className="bg-bg-base border border-border-subtle text-white text-xs rounded-lg px-2 py-1 outline-none"
-                        >
-                          <option value="4">4 B (1 word)</option>
-                          <option value="8">8 B (2 words)</option>
-                          <option value="16">16 B (4 words)</option>
-                        </select>
-                      </div>
+                      {/* Enable toggle for L2 / L3 */}
+                      {activeCacheLevel !== 'L1' && (
+                        <div className="flex items-center justify-between pb-2 border-b border-border-subtle/50">
+                          <span className="text-xs font-bold text-white">Enable {activeCacheLevel} Cache</span>
+                          <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                            <input 
+                              type="checkbox" 
+                              className="sr-only peer"
+                              checked={activeCacheLevel === 'L2' ? cacheHierarchyConfig.l2.enabled : cacheHierarchyConfig.l3.enabled}
+                              onChange={(e) => {
+                                const key = activeCacheLevel === 'L2' ? 'l2' : 'l3';
+                                setCacheHierarchyConfig({
+                                  ...cacheHierarchyConfig,
+                                  [key]: { ...cacheHierarchyConfig[key], enabled: e.target.checked }
+                                });
+                              }}
+                            />
+                            <div className="w-8 h-4 bg-bg-base peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-text-muted peer-checked:after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500 border border-border-subtle"></div>
+                          </label>
+                        </div>
+                      )}
 
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-text-muted">Associativity</span>
-                        <select 
-                          value={cacheConfig.associativity}
-                          onChange={(e) => setCacheConfig({ ...cacheConfig, associativity: parseInt(e.target.value, 10) })}
-                          className="bg-bg-base border border-border-subtle text-white text-xs rounded-lg px-2 py-1 outline-none"
-                        >
-                          <option value="1">Direct Mapped</option>
-                          <option value="2">2-Way Set Assoc.</option>
-                          <option value="4">4-Way Set Assoc.</option>
-                        </select>
-                      </div>
+                      {/* Config fields for active level */}
+                      {(() => {
+                        const lvlKey = activeCacheLevel === 'L1' ? 'l1' : activeCacheLevel === 'L2' ? 'l2' : 'l3';
+                        const cfg = cacheHierarchyConfig[lvlKey];
+                        const isLevelActive = lvlKey === 'l1' ? true : cfg.enabled;
 
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-text-muted">Replacement Policy</span>
-                        <select 
-                          value={cacheConfig.policy || 'lru'}
-                          onChange={(e) => setCacheConfig({ ...cacheConfig, policy: e.target.value as any })}
-                          className="bg-bg-base border border-border-subtle text-white text-xs rounded-lg px-2 py-1 outline-none"
-                        >
-                          <option value="lru">LRU (Least Recently Used)</option>
-                          <option value="fifo">FIFO (First In First Out)</option>
-                          <option value="random">Random</option>
-                        </select>
-                      </div>
+                        if (!isLevelActive) {
+                          return (
+                            <div className="py-4 text-center text-xs text-text-muted italic">
+                              {activeCacheLevel} Cache is disabled. Turn on the switch above to configure.
+                            </div>
+                          );
+                        }
 
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-text-muted">Miss Penalty (Cycles)</span>
-                        <input
-                          type="number"
-                          min="1"
-                          max="100"
-                          value={cacheConfig.missPenalty}
-                          onChange={(e) => setCacheConfig({ ...cacheConfig, missPenalty: parseInt(e.target.value, 10) || 10 })}
-                          className="w-16 bg-bg-base border border-border-subtle text-white text-xs rounded-lg px-2 py-1 outline-none text-right"
-                        />
-                      </div>
+                        return (
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-text-muted">Cache Size</span>
+                              <select 
+                                value={cfg.cacheSize}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value, 10);
+                                  setCacheHierarchyConfig({
+                                    ...cacheHierarchyConfig,
+                                    [lvlKey]: { ...cfg, cacheSize: val }
+                                  });
+                                }}
+                                className="bg-bg-base border border-border-subtle text-white text-xs rounded-lg px-2 py-1 outline-none font-mono"
+                              >
+                                {lvlKey === 'l1' && (
+                                  <>
+                                    <option value="64">64 B</option>
+                                    <option value="128">128 B</option>
+                                    <option value="256">256 B</option>
+                                    <option value="512">512 B</option>
+                                  </>
+                                )}
+                                {lvlKey === 'l2' && (
+                                  <>
+                                    <option value="512">512 B</option>
+                                    <option value="1024">1 KB</option>
+                                    <option value="2048">2 KB</option>
+                                    <option value="4096">4 KB</option>
+                                    <option value="8192">8 KB</option>
+                                  </>
+                                )}
+                                {lvlKey === 'l3' && (
+                                  <>
+                                    <option value="4096">4 KB</option>
+                                    <option value="8192">8 KB</option>
+                                    <option value="16384">16 KB</option>
+                                    <option value="32768">32 KB</option>
+                                    <option value="65536">64 KB</option>
+                                  </>
+                                )}
+                              </select>
+                            </div>
+
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-text-muted">Block Size</span>
+                              <select 
+                                value={cfg.blockSize}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value, 10);
+                                  setCacheHierarchyConfig({
+                                    ...cacheHierarchyConfig,
+                                    [lvlKey]: { ...cfg, blockSize: val }
+                                  });
+                                }}
+                                className="bg-bg-base border border-border-subtle text-white text-xs rounded-lg px-2 py-1 outline-none font-mono"
+                              >
+                                <option value="4">4 B (1 word)</option>
+                                <option value="8">8 B (2 words)</option>
+                                <option value="16">16 B (4 words)</option>
+                                <option value="32">32 B (8 words)</option>
+                                <option value="64">64 B (16 words)</option>
+                              </select>
+                            </div>
+
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-text-muted">Associativity</span>
+                              <select 
+                                value={cfg.associativity}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value, 10);
+                                  setCacheHierarchyConfig({
+                                    ...cacheHierarchyConfig,
+                                    [lvlKey]: { ...cfg, associativity: val }
+                                  });
+                                }}
+                                className="bg-bg-base border border-border-subtle text-white text-xs rounded-lg px-2 py-1 outline-none font-mono"
+                              >
+                                <option value="1">Direct Mapped</option>
+                                <option value="2">2-Way Set Assoc.</option>
+                                <option value="4">4-Way Set Assoc.</option>
+                                <option value="8">8-Way Set Assoc.</option>
+                              </select>
+                            </div>
+
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-text-muted">Replacement Policy</span>
+                              <select 
+                                value={cfg.policy || 'lru'}
+                                onChange={(e) => {
+                                  const val = e.target.value as any;
+                                  setCacheHierarchyConfig({
+                                    ...cacheHierarchyConfig,
+                                    [lvlKey]: { ...cfg, policy: val }
+                                  });
+                                }}
+                                className="bg-bg-base border border-border-subtle text-white text-xs rounded-lg px-2 py-1 outline-none font-mono"
+                              >
+                                <option value="lru">LRU (Least Recently Used)</option>
+                                <option value="fifo">FIFO (First In First Out)</option>
+                                <option value="random">Random</option>
+                              </select>
+                            </div>
+
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs text-text-muted">
+                                {lvlKey === 'l1' ? 'L1 Miss Penalty (Cycles)' : lvlKey === 'l2' ? 'L2 Miss Penalty (Cycles)' : 'L3 Miss Penalty (Cycles)'}
+                              </span>
+                              <input
+                                type="number"
+                                min="1"
+                                max="200"
+                                value={cfg.missPenalty}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value, 10) || 1;
+                                  setCacheHierarchyConfig({
+                                    ...cacheHierarchyConfig,
+                                    [lvlKey]: { ...cfg, missPenalty: val }
+                                  });
+                                }}
+                                className="w-16 bg-bg-base border border-border-subtle text-white text-xs rounded-lg px-2 py-1 outline-none text-right font-mono"
+                              />
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
@@ -373,7 +498,7 @@ export const ArchitectureSettingsPanel = () => {
                     onClick={() => {
                       try {
                         generateReport();
-                      } catch (e) {
+                      } catch {
                         alert('Failed to generate report. Make sure you run the simulator first.');
                       }
                     }}

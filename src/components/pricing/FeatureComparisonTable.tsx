@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import { Check, X, Minus } from 'lucide-react';
 import { FEATURE_COMPARISON, TIER_CONFIGS, type TierName } from '../../lib/tierConfig';
 
@@ -33,9 +34,9 @@ export const FeatureComparisonTable = () => {
 
           <tbody>
             {FEATURE_COMPARISON.map((category, catIdx) => (
-              <>
+              <Fragment key={`cat-group-${catIdx}`}>
                 {/* Category header */}
-                <tr key={`cat-${catIdx}`} className="bg-bg-surface/50">
+                <tr className="bg-bg-surface/50">
                   <td colSpan={5} className="py-3 px-6">
                     <span className="text-xs font-bold uppercase tracking-wider text-text-muted">
                       {category.name}
@@ -60,7 +61,7 @@ export const FeatureComparisonTable = () => {
                     })}
                   </tr>
                 ))}
-              </>
+              </Fragment>
             ))}
           </tbody>
         </table>

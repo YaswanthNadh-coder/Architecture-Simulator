@@ -3,8 +3,8 @@ export interface CacheConfig {
   cacheSize: number;    // in bytes
   blockSize: number;    // in bytes
   associativity: number; // 1 = Direct, N = N-way
-  missPenalty: number;  // stall cycles on miss
-  policy?: 'lru' | 'fifo' | 'random'; // Support replacement policy if needed
+  missPenalty: number;  // stall cycles on miss (latency to next level / memory)
+  policy?: 'lru' | 'fifo' | 'random'; // Replacement policy
 }
 
 export interface CacheLine {
@@ -20,6 +20,14 @@ export interface CacheStats {
   misses: number;
   reads: number;
   writes: number;
+}
+
+export type CacheLevel = 'L1' | 'L2' | 'L3';
+
+export interface CacheHierarchyConfig {
+  l1: CacheConfig;
+  l2: CacheConfig;
+  l3: CacheConfig;
 }
 
 export class CacheSimulator {
@@ -83,9 +91,7 @@ export class CacheSimulator {
     const numBlocks = Math.floor(this.config.cacheSize / this.config.blockSize);
     const numSets = Math.max(1, Math.floor(numBlocks / this.config.associativity));
     
-    // Address decomposition: offset (blockSize), index (numSets), tag (remaining)
-
-    // Extract index and tag
+    // Address decomposition
     const blockAddress = Math.floor(address / this.config.blockSize);
     const index = numSets > 1 ? blockAddress % numSets : 0;
     const tag = Math.floor(blockAddress / numSets);
@@ -100,10 +106,9 @@ export class CacheSimulator {
         if (policy === 'lru') {
           set[i].lru = this.lruCounter;
         }
-        // Note: For FIFO, we don't update set[i].lru on hit, keeping the original load order.
         if (isWrite) set[i].dirty = true;
         this.stats.hits++;
-        return { hit: true, stallCycles: 0 }; // L1 hit is usually 1 cycle (no stall)
+        return { hit: true, stallCycles: 0 };
       }
     }
 
@@ -115,7 +120,6 @@ export class CacheSimulator {
     const policy = this.config.policy || 'lru';
 
     if (policy === 'random') {
-      // Find invalid block first
       let foundInvalid = false;
       for (let i = 0; i < set.length; i++) {
         if (!set[i].valid) {
@@ -128,7 +132,6 @@ export class CacheSimulator {
         victimIdx = Math.floor(Math.random() * set.length);
       }
     } else if (policy === 'fifo') {
-      // For FIFO, we replace the block with the smallest LRU value (acting as insertion order counter)
       let minLru = Infinity;
       for (let i = 0; i < set.length; i++) {
         if (!set[i].valid) {
@@ -164,5 +167,92 @@ export class CacheSimulator {
     };
 
     return { hit: false, stallCycles: this.config.missPenalty };
+  }
+}
+
+export class CacheHierarchy {
+  public l1: CacheSimulator;
+  public l2: CacheSimulator;
+  public l3: CacheSimulator;
+
+  constructor(config: CacheHierarchyConfig) {
+    this.l1 = new CacheSimulator(config.l1);
+    this.l2 = new CacheSimulator(config.l2);
+    this.l3 = new CacheSimulator(config.l3);
+  }
+
+  public updateConfig(config: CacheHierarchyConfig) {
+    this.l1.updateConfig(config.l1);
+    this.l2.updateConfig(config.l2);
+    this.l3.updateConfig(config.l3);
+  }
+
+  public reset() {
+    this.l1.reset();
+    this.l2.reset();
+    this.l3.reset();
+  }
+
+  public access(address: number, isWrite: boolean): { hitLevel: CacheLevel | null; hit: boolean; stallCycles: number } {
+    if (!this.l1.config.enabled) {
+      return { hitLevel: null, hit: false, stallCycles: 0 };
+    }
+
+    // L1 Access
+    const l1Result = this.l1.access(address, isWrite);
+    if (l1Result.hit) {
+      return { hitLevel: 'L1', hit: true, stallCycles: 0 };
+    }
+
+    // L1 Miss -> check L2
+    if (!this.l2.config.enabled) {
+      return { hitLevel: null, hit: false, stallCycles: this.l1.config.missPenalty };
+    }
+
+    const l2Result = this.l2.access(address, isWrite);
+    if (l2Result.hit) {
+      return { hitLevel: 'L2', hit: true, stallCycles: this.l1.config.missPenalty };
+    }
+
+    // L2 Miss -> check L3
+    if (!this.l3.config.enabled) {
+      return { hitLevel: null, hit: false, stallCycles: this.l1.config.missPenalty + this.l2.config.missPenalty };
+    }
+
+    const l3Result = this.l3.access(address, isWrite);
+    if (l3Result.hit) {
+      return { hitLevel: 'L3', hit: true, stallCycles: this.l1.config.missPenalty + this.l2.config.missPenalty };
+    }
+
+    // L3 Miss -> Memory access
+    return {
+      hitLevel: null,
+      hit: false,
+      stallCycles: this.l1.config.missPenalty + this.l2.config.missPenalty + this.l3.config.missPenalty,
+    };
+  }
+
+  public getAMAT(): number {
+    if (!this.l1.config.enabled) return 1;
+
+    const l1HitTime = 1;
+    const l1MissRate = this.l1.stats.accesses > 0 ? this.l1.stats.misses / this.l1.stats.accesses : 0;
+    
+    if (!this.l2.config.enabled) {
+      return l1HitTime + l1MissRate * this.l1.config.missPenalty;
+    }
+
+    const l2HitTime = this.l1.config.missPenalty;
+    const l2MissRate = this.l2.stats.accesses > 0 ? this.l2.stats.misses / this.l2.stats.accesses : 0;
+
+    if (!this.l3.config.enabled) {
+      return l1HitTime + l1MissRate * (l2HitTime + l2MissRate * this.l2.config.missPenalty);
+    }
+
+    const l3HitTime = this.l2.config.missPenalty;
+    const l3MissRate = this.l3.stats.accesses > 0 ? this.l3.stats.misses / this.l3.stats.accesses : 0;
+    const memPenalty = this.l3.config.missPenalty;
+
+    return l1HitTime + l1MissRate * (l2HitTime + l2MissRate * (l3HitTime + l3MissRate * memPenalty));
   }
 }

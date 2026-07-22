@@ -173,7 +173,132 @@ main:
     ],
   },
 
-  // ── Lesson 3: Data Hazards ─────────────────────────────────────────
+  // ── Lesson 3: Syscalls & Output (Printing Values & Program Exit) ──
+  {
+    id: 'syscalls-and-output',
+    title: 'Syscalls & Output: Printing Values & Program Exit',
+    description: 'Learn how to use system calls (syscall) to print integers, print strings, read input, and cleanly terminate programs using $v0 and $a0.',
+    icon: '🖥️',
+    difficulty: 'beginner',
+    estimatedMinutes: 6,
+    program: `# Syscall Demo — Printing Values & Clean Exit
+.data
+msg:     .asciiz "Computed Result: "
+newline: .asciiz "\\n"
+
+.text
+main:
+  # 1. Perform calculation
+  addi $t0, $zero, 25   # $t0 = 25
+  addi $t1, $zero, 17   # $t1 = 17
+  add  $t2, $t0, $t1    # $t2 = 42
+
+  # 2. Print label string ("Computed Result: ")
+  li   $v0, 4           # syscall 4 = print_string
+  la   $a0, msg        # $a0 = address of msg
+  syscall
+
+  # 3. Print integer value (42)
+  li   $v0, 1           # syscall 1 = print_int
+  add  $a0, $t2, $zero  # $a0 = value to print (42)
+  syscall
+
+  # 4. Print newline character
+  li   $v0, 4           # syscall 4 = print_string
+  la   $a0, newline     # $a0 = address of newline
+  syscall
+
+  # 5. Cleanly exit the program
+  li   $v0, 10          # syscall 10 = exit
+  syscall
+`,
+    settings: { forwarding: true },
+    steps: [
+      {
+        type: 'instruction',
+        title: 'What is a System Call (syscall)?',
+        content: 'Assembly code running on a CPU cannot directly access screen output or user input. Instead, it must ask the **Operating System** to perform these tasks using a `syscall` instruction.\n\nSystem calls use specific register conventions:\n• **`$v0`**: Holds the **Syscall Code** (tells OS what action to perform)\n• **`$a0`**: Holds the **Argument** (data or memory address to pass to OS)',
+      },
+      {
+        type: 'instruction',
+        title: 'Common Syscall Codes Table',
+        content: 'Here are the standard system call codes you will use constantly:\n\n| $v0 Code | Function | Argument in $a0 |\n|---|---|---|\n| **1** | Print Integer | `$a0` = Integer value to print |\n| **4** | Print String | `$a0` = Memory address of `.asciiz` string |\n| **5** | Read Integer | Result returned in `$v0` |\n| **10** | Exit Program | *(No argument required)* |\n| **11** | Print Character | `$a0` = ASCII character code |',
+      },
+      {
+        type: 'step-simulation',
+        title: 'Step 1: Perform Calculation & Setup String',
+        content: 'Step through the pipeline. Watch `$t2` compute $25 + 17 = 42$. Then watch `li $v0, 4` and `la $a0, msg` load the string address for printing.',
+        autoStep: 6,
+        highlightLine: 12,
+      },
+      {
+        type: 'step-simulation',
+        title: 'Step 2: Execute Syscall 4 (Print String)',
+        content: 'Step through the first `syscall` instruction. Look at the **Console Panel** at the bottom of the simulator screen — you will see `"Computed Result: "` printed!',
+        autoStep: 3,
+        highlightLine: 14,
+      },
+      {
+        type: 'step-simulation',
+        title: 'Step 3: Execute Syscall 1 (Print Integer)',
+        content: 'Next, `li $v0, 1` sets up the Print Integer syscall, and `add $a0, $t2, $zero` moves 42 into `$a0`. Step forward to execute the `syscall` — you will see `42` printed to the console!',
+        autoStep: 3,
+        highlightLine: 19,
+      },
+      {
+        type: 'observe',
+        title: 'Step 4: Exiting the Program (Syscall 10)',
+        content: 'Finally, `li $v0, 10` followed by `syscall` tells the CPU to halt execution cleanly. Without `syscall 10`, the processor would continue executing random memory past the end of the program!',
+        autoStep: 4,
+        highlightLine: 28,
+      },
+      {
+        type: 'question',
+        title: 'Syscall Code Register',
+        content: 'Check your understanding of system call conventions.',
+        question: {
+          prompt: 'Which register must hold the syscall function code before executing the `syscall` instruction?',
+          options: ['$a0', '$v0', '$t0', '$sp'],
+          correctIndex: 1,
+          explanation: 'Register $v0 specifies the syscall service code (e.g. 1 for print int, 4 for print string, 10 for exit).',
+        },
+      },
+      {
+        type: 'question',
+        title: 'Printing Integers vs Strings',
+        content: 'Compare how integers and strings are passed to syscalls.',
+        question: {
+          prompt: 'To print an integer value, what goes into register $a0? What goes into $a0 to print a string?',
+          options: [
+            'Integer: The value itself; String: Memory address of the string',
+            'Integer: Memory address; String: The string text',
+            'Integer: Always 0; String: Always 1',
+            'Integer: $v0; String: $v1'
+          ],
+          correctIndex: 0,
+          explanation: 'For syscall 1 (print_int), $a0 holds the literal integer value (e.g., 42). For syscall 4 (print_string), $a0 holds the memory address of the .asciiz string (loaded via `la $a0, label`).',
+        },
+      },
+      {
+        type: 'question',
+        title: 'Program Termination',
+        content: 'Understand why syscall 10 is necessary.',
+        question: {
+          prompt: 'What happens if a program omits `li $v0, 10` and `syscall` at the end of execution?',
+          options: [
+            'The computer automatically turns off',
+            'The processor pipeline continues fetching whatever bytes come next in memory as instructions',
+            'The simulator throws a compilation error before running',
+            'The program loops back to main automatically'
+          ],
+          correctIndex: 1,
+          explanation: 'Hardware processors do not know where a program ends. Without an explicit exit syscall (or return instruction), the PC keeps incrementing into uninitialized memory.',
+        },
+      },
+    ],
+  },
+
+  // ── Lesson 4: Data Hazards ─────────────────────────────────────────
   {
     id: 'data-hazards',
     title: 'Data Hazards',

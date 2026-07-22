@@ -37,7 +37,9 @@ export const CourseListPage = () => {
 
   useEffect(() => {
     if (profile) {
-      loadCourses();
+      queueMicrotask(() => {
+        loadCourses();
+      });
     }
   }, [profile]);
 

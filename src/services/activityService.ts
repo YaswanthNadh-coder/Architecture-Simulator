@@ -185,7 +185,7 @@ export const getUserActivityMetrics = async (userId: string): Promise<{ metrics:
     let currentStreak = 0;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    let checkDate = new Date(today);
+    const checkDate = new Date(today);
     
     const todayString = getLocalDateString(checkDate);
     if (!eventsByDate.has(todayString)) {
@@ -338,24 +338,12 @@ export const getConceptMasteryData = async (userId: string): Promise<{
     if (!finalData || finalData.length === 0) return { concepts: getDefaultConcepts(), error: null };
 
     // Aggregate counts
-    let totalDataHazards = 0;
-    let totalControlHazards = 0;
-    let totalMemoryStalls = 0;
-    let totalForwards = 0;
-    let forwardingOnCount = 0;
     let forwardingOffCount = 0;
-    let totalCpiSum = 0;
     const recentCpis: number[] = [];
 
     finalData.forEach(row => {
-      totalDataHazards += row.data_hazards || 0;
-      totalControlHazards += row.control_hazards || 0;
-      totalMemoryStalls += row.memory_stalls || 0;
-      totalForwards += row.forward_count || 0;
-      if (row.forwarding_enabled) forwardingOnCount++;
-      else forwardingOffCount++;
+      if (!row.forwarding_enabled) forwardingOffCount++;
       const cpi = Number(row.cpi) || 0;
-      totalCpiSum += cpi;
       recentCpis.push(cpi);
     });
 

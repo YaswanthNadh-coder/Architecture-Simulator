@@ -63,7 +63,7 @@ export const generateReport = () => {
       ['Data Forwarding', store.forwardingEnabled ? 'Enabled' : 'Disabled'],
       ['Branch Prediction', store.branchPrediction === 'always-taken' ? 'Always Taken' : 'Assume Not Taken'],
       ['Memory Latency', `${store.memoryLatency} cycles`],
-      ['L1 Cache', store.cacheConfig.enabled ? 'Enabled' : 'Disabled'],
+      ['Cache Hierarchy (L1/L2/L3)', store.cacheConfig.enabled ? 'Enabled' : 'Disabled'],
     ],
     theme: 'grid',
     headStyles: { fillColor: [46, 204, 113] },
@@ -73,25 +73,46 @@ export const generateReport = () => {
   let nextSectionY = (doc as any).lastAutoTable.finalY + 15;
   
   if (store.cacheConfig.enabled) {
-    const cacheStats = engine.cache.stats;
-    const hitRate = cacheStats.accesses > 0 ? ((cacheStats.hits / cacheStats.accesses) * 100).toFixed(1) : '0.0';
+    const hierarchy = engine.cacheHierarchy;
+    const l1Stats = hierarchy.l1.stats;
+    const l1HitRate = l1Stats.accesses > 0 ? ((l1Stats.hits / l1Stats.accesses) * 100).toFixed(1) : '0.0';
+    const amat = hierarchy.getAMAT().toFixed(2);
     
     doc.setFontSize(14);
-    doc.text('3. L1 Data Cache Statistics', 14, nextSectionY);
-    
+    doc.text('3. Cache Hierarchy Statistics', 14, nextSectionY);
+
+    const cacheTableRows = [
+      ['AMAT (Average Access Time)', `${amat} cycles`],
+      ['L1 Cache Status', `Enabled (${store.cacheHierarchyConfig.l1.cacheSize}B, ${store.cacheHierarchyConfig.l1.associativity}-way)`],
+      ['L1 Accesses / Hits / Misses', `${l1Stats.accesses} / ${l1Stats.hits} / ${l1Stats.misses} (${l1HitRate}% Hit)`],
+    ];
+
+    if (store.cacheHierarchyConfig.l2.enabled) {
+      const l2Stats = hierarchy.l2.stats;
+      const l2HitRate = l2Stats.accesses > 0 ? ((l2Stats.hits / l2Stats.accesses) * 100).toFixed(1) : '0.0';
+      cacheTableRows.push(
+        ['L2 Cache Status', `Enabled (${store.cacheHierarchyConfig.l2.cacheSize}B, ${store.cacheHierarchyConfig.l2.associativity}-way)`],
+        ['L2 Accesses / Hits / Misses', `${l2Stats.accesses} / ${l2Stats.hits} / ${l2Stats.misses} (${l2HitRate}% Hit)`]
+      );
+    } else {
+      cacheTableRows.push(['L2 Cache Status', 'Disabled (Bypassed)']);
+    }
+
+    if (store.cacheHierarchyConfig.l3.enabled) {
+      const l3Stats = hierarchy.l3.stats;
+      const l3HitRate = l3Stats.accesses > 0 ? ((l3Stats.hits / l3Stats.accesses) * 100).toFixed(1) : '0.0';
+      cacheTableRows.push(
+        ['L3 Cache Status', `Enabled (${store.cacheHierarchyConfig.l3.cacheSize}B, ${store.cacheHierarchyConfig.l3.associativity}-way)`],
+        ['L3 Accesses / Hits / Misses', `${l3Stats.accesses} / ${l3Stats.hits} / ${l3Stats.misses} (${l3HitRate}% Hit)`]
+      );
+    } else {
+      cacheTableRows.push(['L3 Cache Status', 'Disabled (Bypassed)']);
+    }
+
     autoTable(doc, {
       startY: nextSectionY + 5,
       head: [['Metric', 'Value']],
-      body: [
-        ['Cache Size', `${store.cacheConfig.cacheSize} Bytes`],
-        ['Block Size', `${store.cacheConfig.blockSize} Bytes`],
-        ['Associativity', `${store.cacheConfig.associativity}-way`],
-        ['Miss Penalty', `${store.cacheConfig.missPenalty} cycles`],
-        ['Total Accesses', cacheStats.accesses.toString()],
-        ['Cache Hits', cacheStats.hits.toString()],
-        ['Cache Misses', cacheStats.misses.toString()],
-        ['Hit Rate', `${hitRate}%`],
-      ],
+      body: cacheTableRows,
       theme: 'grid',
       headStyles: { fillColor: [155, 89, 182] },
     });

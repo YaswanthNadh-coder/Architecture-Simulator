@@ -87,16 +87,18 @@ export const DiffView = () => {
           setStatsOn({ total: onTotal, stalls: onStalls, instrs: onInstrs, regs: new Int32Array(engineOn.getRegisters()), mem: new Map(engineOn.getMemory()) });
           setStatsOff({ total: offTotal, stalls: offStalls, instrs: offInstrs, regs: new Int32Array(engineOff.getRegisters()), mem: new Map(engineOff.getMemory()) });
         }
-      } catch (err) {
+      } catch {
         setError('Error simulating comparison.');
       } finally {
         setIsSimulating(false);
       }
     }, 100); // give UI time to render loading state
-  }, [code]);
+  }, [code, comparisonType, isa]);
 
   useEffect(() => {
-    runComparison();
+    queueMicrotask(() => {
+      runComparison();
+    });
   }, [runComparison, comparisonType]);
 
   if (error) {

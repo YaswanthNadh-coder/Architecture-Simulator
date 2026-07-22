@@ -70,7 +70,9 @@ export const AssignmentDetailPage = () => {
 
   useEffect(() => {
     if (assignmentId && courseId) {
-      loadData();
+      queueMicrotask(() => {
+        loadData();
+      });
     }
   }, [assignmentId, courseId]);
 

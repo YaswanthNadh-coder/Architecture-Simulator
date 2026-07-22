@@ -54,21 +54,23 @@ export const AssignmentBuilder = ({ initial, onSave, onCancel }: Props) => {
 
   // Reset all form state when the initial assignment changes (e.g. user clicks Edit on a different assignment)
   useEffect(() => {
-    setCurrentStep('Specification');
-    setTitle(initial?.title || '');
-    setDescription(initial?.description || '');
-    setSpecification(initial?.specification || '');
-    setDifficulty(initial?.difficulty || 'Intermediate');
-    setStarterCode(initial?.starterCode || DEFAULT_STARTER_CODE);
-    setBlockedInstructions(initial?.blockedInstructions || []);
-    setDueDate(initial?.dueDate || '');
-    setTimeLimit(initial?.timeLimit || 0);
-    setTestCases(initial?.testCases || []);
-    setRubric(initial?.rubric || { correctness: 50, efficiency: 30, style: 20 });
-    setNewBlockedInstr('');
-    setLatePenaltyPct(initial?.latePenaltyPct || 0);
-    setMaxAttempts(initial?.maxAttempts || -1);
-    setMaxCyclesLimit(initial?.maxCyclesLimit || 10000);
+    queueMicrotask(() => {
+      setCurrentStep('Specification');
+      setTitle(initial?.title || '');
+      setDescription(initial?.description || '');
+      setSpecification(initial?.specification || '');
+      setDifficulty(initial?.difficulty || 'Intermediate');
+      setStarterCode(initial?.starterCode || DEFAULT_STARTER_CODE);
+      setBlockedInstructions(initial?.blockedInstructions || []);
+      setDueDate(initial?.dueDate || '');
+      setTimeLimit(initial?.timeLimit || 0);
+      setTestCases(initial?.testCases || []);
+      setRubric(initial?.rubric || { correctness: 50, efficiency: 30, style: 20 });
+      setNewBlockedInstr('');
+      setLatePenaltyPct(initial?.latePenaltyPct || 0);
+      setMaxAttempts(initial?.maxAttempts || -1);
+      setMaxCyclesLimit(initial?.maxCyclesLimit || 10000);
+    });
   }, [initial?.id]);
 
   const stepIndex = WIZARD_STEPS.indexOf(currentStep);

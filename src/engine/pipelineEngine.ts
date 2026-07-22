@@ -6,7 +6,7 @@
 
 import type { ParsedInstruction } from './mipsParser';
 import { handleSyscall, type SyscallResult } from './syscallHandler';
-import { CacheSimulator } from './cacheSimulator';
+import { CacheSimulator, CacheHierarchy } from './cacheSimulator';
 import { BranchPredictionTracker } from './branchPredictor';
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -236,14 +236,16 @@ export class MIPSPipelineEngine {
   public maxCycles = 10000;
   public isa: 'mips' | 'riscv' = 'mips';
   
-  // Cache
-  public cache = new CacheSimulator({
-    enabled: false,
-    cacheSize: 256,
-    blockSize: 16,
-    associativity: 1,
-    missPenalty: 10,
+  // Cache Hierarchy
+  public cacheHierarchy = new CacheHierarchy({
+    l1: { enabled: false, cacheSize: 256, blockSize: 16, associativity: 1, missPenalty: 1, policy: 'lru' },
+    l2: { enabled: false, cacheSize: 4096, blockSize: 32, associativity: 4, missPenalty: 10, policy: 'lru' },
+    l3: { enabled: false, cacheSize: 32768, blockSize: 64, associativity: 8, missPenalty: 50, policy: 'lru' },
   });
+
+  public get cache(): CacheSimulator {
+    return this.cacheHierarchy.l1;
+  }
 
   public branchPredictor = new BranchPredictionTracker();
 
@@ -297,7 +299,7 @@ export class MIPSPipelineEngine {
     this.cycleHistory = [];
     this.lastModifiedAddresses = [];
     this.memStallCounter = 0;
-    this.cache.reset();
+    this.cacheHierarchy.reset();
     this.branchPredictor.reset();
     // Save initial snapshot
     this.history.push(this.takeHistoryEntry());
@@ -373,9 +375,9 @@ export class MIPSPipelineEngine {
       if (this.memStallCounter > 0) memStallNeeded = true;
     } else if (this.exMem.valid && (this.exMem.memRead || this.exMem.memWrite)) {
       let latency = this.memoryLatency;
-      if (this.cache.config.enabled) {
+      if (this.cacheHierarchy.l1.config.enabled) {
         const addr = this.exMem.aluResult;
-        const result = this.cache.access(addr, this.exMem.memWrite);
+        const result = this.cacheHierarchy.access(addr, this.exMem.memWrite);
         latency = result.stallCycles;
       }
       

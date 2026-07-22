@@ -115,7 +115,7 @@ export const RegisterPage = () => {
   }
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center relative overflow-hidden py-8"
+    <div className="min-h-screen w-full flex items-center justify-center relative overflow-y-auto p-4 py-12 pb-24 custom-scrollbar"
       style={{ background: 'var(--color-bg-base)' }}>
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-96 h-96 rounded-full opacity-15"

@@ -3,7 +3,7 @@ import { assemble, type ParsedInstruction, type ParseError } from '../engine/mip
 import { assembleRISCV } from '../engine/riscvParser';
 import { MIPSPipelineEngine, type PipelineSnapshot, type EngineStats, type DatapathValues } from '../engine/pipelineEngine';
 import { completeSyscallInput, SYSCALL } from '../engine/syscallHandler';
-import type { CacheConfig } from '../engine/cacheSimulator';
+import type { CacheConfig, CacheHierarchyConfig } from '../engine/cacheSimulator';
 import { logSimulationEvent, logSimulationCompletion } from '../services/activityService';
 
 // ── Re-export types for UI compatibility ─────────────────────────────────
@@ -70,6 +70,7 @@ interface SimulatorStore {
   branchPrediction: 'not-taken' | 'always-taken';
   memoryLatency: number;
   cacheConfig: CacheConfig;
+  cacheHierarchyConfig: CacheHierarchyConfig;
   speed: number;
   breakpoints: Set<number>;
 
@@ -109,6 +110,7 @@ interface SimulatorStore {
   setBranchPrediction: (strategy: 'not-taken' | 'always-taken') => void;
   setMemoryLatency: (latency: number) => void;
   setCacheConfig: (config: CacheConfig) => void;
+  setCacheHierarchyConfig: (config: CacheHierarchyConfig) => void;
   reset: () => void;
   setBreakpoint: (line: number) => void;
   removeBreakpoint: (line: number) => void;
@@ -272,8 +274,13 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
     cacheSize: 256,
     blockSize: 16,
     associativity: 1,
-    missPenalty: 10,
+    missPenalty: 1,
     policy: 'lru',
+  },
+  cacheHierarchyConfig: {
+    l1: { enabled: false, cacheSize: 256, blockSize: 16, associativity: 1, missPenalty: 1, policy: 'lru' },
+    l2: { enabled: false, cacheSize: 4096, blockSize: 32, associativity: 4, missPenalty: 10, policy: 'lru' },
+    l3: { enabled: false, cacheSize: 32768, blockSize: 64, associativity: 8, missPenalty: 50, policy: 'lru' },
   },
   speed: 800,
   breakpoints: new Set(),
@@ -297,7 +304,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
   setCode: (code) => set({ code, isAssembled: false }),
 
   assemble: () => {
-    const { code, forwardingEnabled, branchPrediction, memoryLatency, cacheConfig, blockedInstructions, isa } = get();
+    const { code, forwardingEnabled, branchPrediction, memoryLatency, cacheHierarchyConfig, blockedInstructions, isa } = get();
     const result = isa === 'riscv'
       ? assembleRISCV(code, {
           blockedInstructions: blockedInstructions.length > 0 ? blockedInstructions : undefined,
@@ -322,7 +329,7 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
     engine.forwardingEnabled = forwardingEnabled;
     engine.branchPrediction = branchPrediction;
     engine.memoryLatency = memoryLatency;
-    engine.cache.updateConfig(cacheConfig);
+    engine.cacheHierarchy.updateConfig(cacheHierarchyConfig);
     engine.isa = isa;
     engine.loadProgram(result.instructions);
     engine.loadDataSegment(result.dataSegment);
@@ -519,8 +526,15 @@ export const useSimulatorStore = create<SimulatorStore>((set, get) => ({
   },
 
   setCacheConfig: (config) => {
-    engine.cache.updateConfig(config);
-    set({ cacheConfig: config });
+    const hierarchy = { ...get().cacheHierarchyConfig, l1: config };
+    engine.cacheHierarchy.updateConfig(hierarchy);
+    set({ cacheConfig: config, cacheHierarchyConfig: hierarchy });
+    if (get().isAssembled) get().assemble();
+  },
+
+  setCacheHierarchyConfig: (hierarchyConfig) => {
+    engine.cacheHierarchy.updateConfig(hierarchyConfig);
+    set({ cacheHierarchyConfig: hierarchyConfig, cacheConfig: hierarchyConfig.l1 });
     if (get().isAssembled) get().assemble();
   },
 

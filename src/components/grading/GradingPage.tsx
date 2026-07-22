@@ -129,7 +129,7 @@ export const GradingPage = () => {
   };
 
   return (
-    <div className="flex-1 overflow-auto bg-bg-base">
+    <div className="flex-1 overflow-y-auto bg-bg-base pb-32 custom-scrollbar">
       {/* Header */}
       <header
         className="sticky top-0 z-10 h-14 flex items-center justify-between px-8 border-b border-border-subtle"

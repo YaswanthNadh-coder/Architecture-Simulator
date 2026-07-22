@@ -92,9 +92,8 @@ function SubmissionTimeline({ submissions, dueDate }: { submissions: any[]; dueD
 
   // Build cumulative timeline
   const dates = Object.keys(byDate).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
-  let cumulative = 0;
-  const data = dates.map(date => {
-    cumulative += byDate[date];
+  const data = dates.map((date, index) => {
+    const cumulative = dates.slice(0, index + 1).reduce((sum, d) => sum + byDate[d], 0);
     return {
       date: new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
       submissions: byDate[date],

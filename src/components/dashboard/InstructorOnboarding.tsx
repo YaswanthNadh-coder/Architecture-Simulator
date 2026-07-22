@@ -86,8 +86,6 @@ export const InstructorOnboarding = () => {
     }
   };
 
-  if (!shouldShow) return null;
-
   const steps: OnboardingStep[] = [
     {
       id: 'create-course',
@@ -136,7 +134,9 @@ export const InstructorOnboarding = () => {
       const timer = setTimeout(handleDismiss, 3000);
       return () => clearTimeout(timer);
     }
-  }, [allComplete]);
+  }, [allComplete, handleDismiss]);
+
+  if (!shouldShow) return null;
 
   return (
     <motion.div

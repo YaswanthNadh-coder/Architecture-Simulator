@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { MipsEditor } from '../editor/MipsEditor';
 import { PipelineCanvas } from '../pipeline/PipelineCanvas';
@@ -8,6 +8,7 @@ import { ConsolePanel } from '../console/ConsolePanel';
 import { ChevronRight, FileCode2, Download, GraduationCap, Share2, ShieldAlert, CheckCircle2, RefreshCw, AlertTriangle } from 'lucide-react';
 import { useSimulatorStore } from '../../store/simulatorStore';
 import { assemble } from '../../engine/mipsParser';
+import { assembleRISCV } from '../../engine/riscvParser';
 import { generateLogisimImage, generateVerilogMem } from '../../engine/exportUtils';
 import { detectShareParams, decodeFromURL, loadFromSupabase } from '../../engine/permalinkEncoder';
 import { TutorialSystem } from './TutorialSystem';
@@ -63,20 +64,109 @@ export const SimulatorPage = () => {
   const [attemptsCount, setAttemptsCount] = useState(0);
   const { setBlockedInstructions } = useSimulatorStore();
 
+  // ── Resizable Panel State ──────────────────────────────────────────────
+  const STORAGE_KEY_PANELS = 'archsim_panel_sizes';
+
+  const loadSavedSizes = () => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_PANELS);
+      if (saved) return JSON.parse(saved);
+    } catch { /* ignore */ }
+    return null;
+  };
+
+  const savedSizes = loadSavedSizes();
+  const [leftPanelWidth, setLeftPanelWidth] = useState(savedSizes?.left ?? 340);
+  const [rightPanelWidth, setRightPanelWidth] = useState(savedSizes?.right ?? 260);
+  const [registerHeight, setRegisterHeight] = useState(savedSizes?.register ?? 220);
+  const [consoleHeight, setConsoleHeight] = useState(savedSizes?.console ?? 180);
+
+  // Persist sizes to localStorage
+  const saveSizesRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveSizes = useCallback(() => {
+    if (saveSizesRef.current) clearTimeout(saveSizesRef.current);
+    saveSizesRef.current = setTimeout(() => {
+      localStorage.setItem(STORAGE_KEY_PANELS, JSON.stringify({
+        left: leftPanelWidth,
+        right: rightPanelWidth,
+        register: registerHeight,
+        console: consoleHeight,
+      }));
+    }, 300);
+  }, [leftPanelWidth, rightPanelWidth, registerHeight, consoleHeight]);
+
+  useEffect(() => { saveSizes(); }, [saveSizes]);
+
+  // Drag handler for resize handles
+  const dragRef = useRef<{
+    type: 'left' | 'right' | 'register' | 'console';
+    startPos: number;
+    startSize: number;
+  } | null>(null);
+
+  const handleDragStart = useCallback((e: React.MouseEvent, type: 'left' | 'right' | 'register' | 'console') => {
+    e.preventDefault();
+    const isCol = type === 'left' || type === 'right';
+    const startPos = isCol ? e.clientX : e.clientY;
+    let startSize: number;
+    switch (type) {
+      case 'left': startSize = leftPanelWidth; break;
+      case 'right': startSize = rightPanelWidth; break;
+      case 'register': startSize = registerHeight; break;
+      case 'console': startSize = consoleHeight; break;
+    }
+    dragRef.current = { type, startPos, startSize };
+
+    document.body.classList.add(isCol ? 'resizing' : 'resizing-row');
+    const handle = e.currentTarget as HTMLElement;
+    handle.classList.add('dragging');
+
+    const onMove = (ev: MouseEvent) => {
+      if (!dragRef.current) return;
+      const delta = isCol ? ev.clientX - dragRef.current.startPos : ev.clientY - dragRef.current.startPos;
+      switch (dragRef.current.type) {
+        case 'left':
+          setLeftPanelWidth(Math.max(200, Math.min(600, dragRef.current.startSize + delta)));
+          break;
+        case 'right':
+          setRightPanelWidth(Math.max(180, Math.min(500, dragRef.current.startSize - delta)));
+          break;
+        case 'register':
+          setRegisterHeight(Math.max(100, Math.min(500, dragRef.current.startSize - delta)));
+          break;
+        case 'console':
+          setConsoleHeight(Math.max(80, Math.min(400, dragRef.current.startSize - delta)));
+          break;
+      }
+    };
+
+    const onUp = () => {
+      dragRef.current = null;
+      document.body.classList.remove('resizing', 'resizing-row');
+      handle.classList.remove('dragging');
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [leftPanelWidth, rightPanelWidth, registerHeight, consoleHeight]);
+
   const handleExport = (format: 'logisim' | 'verilog') => {
-    const result = assemble(code);
-    if (result.errors.length > 0) {
+    const activeISA = useSimulatorStore.getState().isa;
+    const result = activeISA === 'riscv' ? assembleRISCV(code) : assemble(code);
+    if (result.errors.some(e => e.severity === 'error')) {
       alert('Fix assembly errors before exporting.');
       return;
     }
     let content = '';
     let filename = '';
     if (format === 'logisim') {
-      content = generateLogisimImage(result.instructions, result.dataSegment);
-      filename = 'mem.txt';
+      content = generateLogisimImage(result.instructions, result.dataSegment, activeISA);
+      filename = `${activeISA}_mem.txt`;
     } else {
-      content = generateVerilogMem(result.instructions, result.dataSegment);
-      filename = 'mem.v';
+      content = generateVerilogMem(result.instructions, result.dataSegment, activeISA);
+      filename = `${activeISA}_mem.v`;
     }
     
     const blob = new Blob([content], { type: 'text/plain' });
@@ -177,12 +267,14 @@ export const SimulatorPage = () => {
     if (shareParams.type === 'code') {
       const decoded = decodeFromURL(shareParams.value);
       if (decoded) {
-        setProjectName('Shared Program (URL)');
-        setCode(decoded.code);
-        if (decoded.settings?.forwarding !== undefined) setForwardingEnabled(decoded.settings.forwarding);
-        if (decoded.settings?.branchPrediction) setBranchPrediction(decoded.settings.branchPrediction as 'always-taken' | 'not-taken');
-        if (decoded.settings?.isa) setISA(decoded.settings.isa);
-        setTimeout(() => runAssemble(), 100);
+        queueMicrotask(() => {
+          setProjectName('Shared Program (URL)');
+          setCode(decoded.code);
+          if (decoded.settings?.forwarding !== undefined) setForwardingEnabled(decoded.settings.forwarding);
+          if (decoded.settings?.branchPrediction) setBranchPrediction(decoded.settings.branchPrediction as 'always-taken' | 'not-taken');
+          if (decoded.settings?.isa) setISA(decoded.settings.isa);
+          setTimeout(() => runAssemble(), 100);
+        });
       }
       return;
     }
@@ -219,8 +311,10 @@ export const SimulatorPage = () => {
         setActiveProjectId(null);
       });
     } else {
-      setProjectName('Scratchpad');
-      setActiveProjectId(null);
+      queueMicrotask(() => {
+        setProjectName('Scratchpad');
+        setActiveProjectId(null);
+      });
     }
   }, [projectId, searchParams, setProjectName, setCode, setActiveProjectId, setForwardingEnabled, setBranchPrediction, setISA, runAssemble]);
 
@@ -351,27 +445,41 @@ export const SimulatorPage = () => {
         <UpgradeBanner cpi={stats.cpi} />
       )}
 
-      {/* Main Dashboard Grid */}
+      {/* Main Dashboard Grid — Resizable Panels */}
       <div className="flex-1 flex min-h-0">
         {/* Left panel — MIPS IDE + Console */}
         <div
-          className="w-[320px] xl:w-[380px] shrink-0 flex flex-col"
-          style={{ borderRight: '1px solid var(--color-border-subtle)' }}
+          className="shrink-0 flex flex-col"
+          style={{ width: `${leftPanelWidth}px` }}
         >
-          <div className={`flex-1 min-h-0 flex flex-col ${showConsole ? 'max-h-[calc(100%-180px)]' : ''}`}>
+          <div className="flex-1 min-h-0 flex flex-col"
+            style={showConsole ? { height: `calc(100% - ${consoleHeight}px - 5px)` } : undefined}
+          >
             <MipsEditor />
           </div>
-          {/* Console panel — persistent below editor */}
+          {/* Console resize handle */}
           {showConsole && (
-            <div className="h-[180px] shrink-0">
-              <ConsolePanel />
-            </div>
+            <>
+              <div
+                className="resize-handle resize-handle-row"
+                onMouseDown={(e) => handleDragStart(e, 'console')}
+              />
+              <div className="shrink-0" style={{ height: `${consoleHeight}px` }}>
+                <ConsolePanel />
+              </div>
+            </>
           )}
         </div>
 
+        {/* Left resize handle */}
+        <div
+          className="resize-handle resize-handle-col"
+          onMouseDown={(e) => handleDragStart(e, 'left')}
+        />
+
         {/* Center column — Multi-View Canvas + Register File */}
         <div className="flex-1 flex flex-col min-w-0 bg-bg-surface">
-          {/* View Tabs Bar (Moved from header to avoid clutter) */}
+          {/* View Tabs Bar */}
           <div className="h-10 border-b border-border-subtle flex items-center px-6 shrink-0 bg-bg-surface">
             <div className="flex items-center gap-1">
               {(['Pipeline', 'Datapath', 'Timing', 'Memory', 'Cache', 'Diff', 'Branching'] as TabView[]).map((tab) => (
@@ -398,18 +506,31 @@ export const SimulatorPage = () => {
             {activeTab === 'Memory' && <MemoryView />}
             {activeTab === 'Cache' && <CacheView />}
             {activeTab === 'Diff' && <DiffView />}
-
             {activeTab === 'Branching' && <BranchPredictionView />}
           </div>
 
+          {/* Register file resize handle */}
+          <div
+            className="resize-handle resize-handle-row"
+            onMouseDown={(e) => handleDragStart(e, 'register')}
+          />
+
           {/* Lower Register File / Execution Controls panel */}
-          <div className="h-[220px] shrink-0">
+          <div className="shrink-0" style={{ height: `${registerHeight}px` }}>
             <RegisterFile />
           </div>
         </div>
 
+        {/* Right resize handle */}
+        <div
+          className="resize-handle resize-handle-col"
+          onMouseDown={(e) => handleDragStart(e, 'right')}
+        />
+
         {/* Right panel */}
-        <RightPanel />
+        <div style={{ width: `${rightPanelWidth}px` }} className="shrink-0">
+          <RightPanel />
+        </div>
       </div>
 
       {/* Shortcuts Help Overlay */}
@@ -709,9 +830,6 @@ export const SimulatorPage = () => {
           </div>
         )}
       </AnimatePresence>
-
-      <TutorialSystem />
-      {showShareDialog && <ShareDialog onClose={() => setShowShareDialog(false)} />}
     </div>
   );
 };

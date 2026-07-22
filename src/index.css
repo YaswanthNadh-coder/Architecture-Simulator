@@ -66,3 +66,80 @@ html, body, #root {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-6px); }
 }
+
+/* ── Resize Handles ──────────────────────────────────── */
+.resize-handle {
+  position: relative;
+  flex-shrink: 0;
+  transition: background-color 0.15s ease;
+}
+
+.resize-handle-col {
+  width: 5px;
+  cursor: col-resize;
+  background: transparent;
+}
+
+.resize-handle-row {
+  height: 5px;
+  cursor: row-resize;
+  background: transparent;
+}
+
+.resize-handle:hover,
+.resize-handle.dragging {
+  background: rgba(59, 130, 246, 0.5);
+}
+
+.resize-handle::after {
+  content: '';
+  position: absolute;
+}
+
+.resize-handle-col::after {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 1px;
+  height: 24px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 1px;
+}
+
+.resize-handle-row::after {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 24px;
+  height: 1px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 1px;
+}
+
+.resize-handle:hover::after,
+.resize-handle.dragging::after {
+  background: rgba(255,255,255,0.4);
+}
+
+/* Prevent text selection while resizing */
+body.resizing {
+  cursor: col-resize !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+body.resizing-row {
+  cursor: row-resize !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+/* ── Fade-in animation ──────────────────────────────── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}

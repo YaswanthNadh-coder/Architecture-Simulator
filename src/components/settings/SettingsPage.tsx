@@ -29,7 +29,7 @@ export const SettingsPage = () => {
   };
 
   return (
-    <div className="flex-1 overflow-auto bg-bg-base p-8">
+    <div className="flex-1 overflow-y-auto bg-bg-base p-8 pb-32 custom-scrollbar">
       <div className="max-w-3xl mx-auto">
         <h1 className="text-2xl font-bold text-white mb-8 flex items-center gap-2">
           <Settings className="text-text-muted" /> Settings
@@ -72,13 +72,6 @@ export const SettingsPage = () => {
               </div>
             )}
           </section>
-
-          {/* Subscription Section — hidden in MVP */}
-          {false && (
-            <section className="bg-bg-surface border border-border-subtle rounded-2xl p-6">
-              {/* entire subscription section — hidden in MVP */}
-            </section>
-          )}
 
           {/* Data & Privacy */}
           <section className="bg-bg-surface border border-border-subtle rounded-2xl p-6">

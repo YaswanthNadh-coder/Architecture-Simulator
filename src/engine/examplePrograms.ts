@@ -538,6 +538,198 @@ done:
   li    $v0, 10
   syscall
 `,
+  },
+  {
+    id: 'cache-hierarchy-benchmark',
+    name: 'Multi-Level Cache Benchmark (L1/L2/L3)',
+    category: 'algorithms',
+    description: 'Demonstrates memory access patterns that hit in L1, L2, L3, and Main Memory. Enable L1, L2, and L3 in CPU Architecture Settings to see the cascade.',
+    difficulty: 'Advanced',
+    tags: ['cache', 'hierarchy', 'performance', 'l1-l2-l3'],
+    code: `# Multi-Level Cache Benchmark (L1 → L2 → L3 → Memory)
+# Enable L1 (256B), L2 (4KB), and L3 (32KB) in CPU Settings.
+
+.data
+buffer: .space 1024
+
+.text
+main:
+  la    $s0, buffer       # $s0 = base address of 1KB buffer
+  li    $s4, 8
+
+  # ── Phase 1: L1 Cache Hits (Tight spatial & temporal locality) ──
+  addi  $t0, $zero, 0     # i = 0
+phase1_loop:
+  beq   $t0, $s4, phase2_start
+  sw    $t0, 0($s0)       # Access offset 0 repeatedly (L1 Hit)
+  lw    $t1, 0($s0)
+  addi  $t0, $t0, 1
+  j     phase1_loop
+
+phase2_start:
+  # ── Phase 2: L2 Hits (Stride across 512B, exceeding L1 256B size) ──
+  li    $s4, 512
+  addi  $t0, $zero, 0     # offset = 0
+phase2_loop:
+  beq   $t0, $s4, done
+  add   $t2, $s0, $t0
+  sw    $t0, 0($t2)       # Access stride 64B
+  lw    $t3, 0($t2)
+  addi  $t0, $t0, 64
+  j     phase2_loop
+
+done:
+  li    $v0, 10
+  syscall
+`,
+  },
+  {
+    id: 'mips-matrix-mult',
+    name: 'Matrix Multiplication 3x3',
+    category: 'algorithms',
+    description: 'Multiply two 3x3 matrices in memory. Demonstrates triple-nested loops, 2D array offset math, and heavy register usage.',
+    difficulty: 'Advanced',
+    tags: ['matrices', 'arrays', 'nested-loops'],
+    code: `# Matrix Multiplication 3x3 (C = A x B)
+.data
+A: .word 1, 2, 3,  4, 5, 6,  7, 8, 9
+B: .word 1, 0, 0,  0, 1, 0,  0, 0, 1
+C: .space 36
+
+.text
+main:
+  la    $s0, A
+  la    $s1, B
+  la    $s2, C
+  addi  $s4, $zero, 3   # dim = 3
+  addi  $t0, $zero, 0   # i = 0
+
+i_loop:
+  beq   $t0, $s4, done
+  addi  $t1, $zero, 0   # j = 0
+
+j_loop:
+  beq   $t1, $s4, next_i
+  addi  $t2, $zero, 0   # k = 0
+  addi  $s3, $zero, 0   # sum = 0
+
+k_loop:
+  beq   $t2, $s4, store_c
+
+  # A[i][k] offset = (i * 3 + k) * 4
+  sll   $t3, $t0, 1
+  add   $t3, $t3, $t0
+  add   $t3, $t3, $t2
+  sll   $t3, $t3, 2
+  add   $t3, $s0, $t3
+  lw    $t4, 0($t3)
+
+  # B[k][j] offset = (k * 3 + j) * 4
+  sll   $t5, $t2, 1
+  add   $t5, $t5, $t2
+  add   $t5, $t5, $t1
+  sll   $t5, $t5, 2
+  add   $t5, $s1, $t5
+  lw    $t6, 0($t5)
+
+  # sum += A[i][k] * B[k][j]
+  mult  $t4, $t6
+  mflo  $t7
+  add   $s3, $s3, $t7
+
+  addi  $t2, $t2, 1
+  j     k_loop
+
+store_c:
+  sll   $t3, $t0, 1
+  add   $t3, $t3, $t0
+  add   $t3, $t3, $t1
+  sll   $t3, $t3, 2
+  add   $t3, $s2, $t3
+  sw    $s3, 0($t3)
+
+  addi  $t1, $t1, 1
+  j     j_loop
+
+next_i:
+  addi  $t0, $t0, 1
+  j     i_loop
+
+done:
+  li    $v0, 10
+  syscall
+`,
+  },
+  {
+    id: 'mips-selection-sort',
+    name: 'Selection Sort',
+    category: 'algorithms',
+    description: 'Sort an array of integers using Selection Sort algorithm.',
+    difficulty: 'Intermediate',
+    tags: ['sorting', 'arrays', 'loops'],
+    code: `# Selection Sort Algorithm — MIPS
+.data
+array: .word 29, 10, 14, 37, 13
+size:  .word 5
+
+.text
+main:
+  la    $s0, array
+  lw    $s1, size
+  addi  $t0, $zero, 0   # i = 0
+  addi  $t6, $s1, -1    # size - 1
+
+outer_loop:
+  beq   $t0, $t6, done
+  add   $t1, $t0, $zero # min_idx = i
+
+  add   $t2, $t0, $zero
+  addi  $t2, $t2, 1     # j = i + 1
+
+inner_loop:
+  beq   $t2, $s1, check_swap
+
+  # Load array[j]
+  sll   $t3, $t2, 2
+  add   $t3, $s0, $t3
+  lw    $t4, 0($t3)
+
+  # Load array[min_idx]
+  sll   $t5, $t1, 2
+  add   $t5, $s0, $t5
+  lw    $t7, 0($t5)
+
+  slt   $t8, $t4, $t7
+  beq   $t8, $zero, next_j
+  add   $t1, $t2, $zero # min_idx = j
+
+next_j:
+  addi  $t2, $t2, 1
+  j     inner_loop
+
+check_swap:
+  beq   $t1, $t0, next_i
+
+  # Swap array[i] and array[min_idx]
+  sll   $t3, $t0, 2
+  add   $t3, $s0, $t3
+  lw    $t4, 0($t3)
+
+  sll   $t5, $t1, 2
+  add   $t5, $s0, $t5
+  lw    $t7, 0($t5)
+
+  sw    $t7, 0($t3)
+  sw    $t4, 0($t5)
+
+next_i:
+  addi  $t0, $t0, 1
+  j     outer_loop
+
+done:
+  li    $v0, 10
+  syscall
+`,
   }
 ];
 

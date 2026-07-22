@@ -128,7 +128,7 @@ const handleEditorMount: OnMount = (_editor, monaco) => {
             '@default': 'identifier',
           }
         }],
-        [/[:\.,\(\)]/, 'punctuation'],
+        [/[:.,()]/, 'punctuation'],
       ]
     }
   });

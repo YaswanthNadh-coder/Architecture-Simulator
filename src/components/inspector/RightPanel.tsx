@@ -22,7 +22,7 @@ export const RightPanel = () => {
   const usefulPct = stats.efficiency;
 
   return (
-    <div className="w-[240px] xl:w-72 h-full bg-bg-surface border-l border-border-subtle flex flex-col overflow-hidden shrink-0">
+    <div className="w-full h-full bg-bg-surface border-l border-border-subtle flex flex-col overflow-hidden shrink-0">
       {/* Tabs */}
       <div className="flex px-4 pt-3 border-b border-border-subtle shrink-0 gap-4">
         <button
